@@ -41,6 +41,7 @@
         "rekey": {
           "type": "object",
           "properties": {
+            "enabled":      { "type": "boolean" },
             "experimental": { "type": "boolean" },
             "confirm":      { "type": "boolean" },
             "keyShares":    { "type": "integer", "minimum": 1 },

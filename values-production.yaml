@@ -13,10 +13,11 @@ recovery:
     vaultRole: "vault-recovery-unseal"
     secretPath: "secret/vault/unseal-keys"
     tlsSkipVerify: false
-    cidr: ""
+    cidr: ""  # Required in production: set to fallback Vault CIDR to restrict NetworkPolicy egress
   rekey:
-    experimental: true
+    enabled: false
     confirm: false
+    experimental: true
     keyShares: 5
     keyThreshold: 3
   encryption:

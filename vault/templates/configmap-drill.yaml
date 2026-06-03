@@ -6,14 +6,18 @@ data:
   rekey-procedure.md: |
     # Vault Rekey Procedure
 
+    EXPERIMENTAL — high-impact operation. Requires double confirmation.
+
     Prerequisites: vault cluster is healthy (unsealed), fallback vault is reachable.
 
     1. Verify cluster health:
        kubectl exec -n {{ .Release.Namespace }} vault-0 -- vault status
 
-    2. Trigger rekey:
-       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
+    2. Trigger rekey (requires both confirm=true and experimental=true):
+       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
          --set recovery.rekey.enabled=true \
+         --set recovery.rekey.confirm=true \
+         --set recovery.rekey.experimental=true \
          --set recovery.rekey.keyShares=5 \
          --set recovery.rekey.keyThreshold=3
 
@@ -23,12 +27,14 @@ data:
     4. Verify new keys in local KV:
        vault kv get secret/vault/unseal-keys
 
-    5. Verify fallback vault has new keys (if recovery.enabled=true):
-       VAULT_ADDR=<fallback-addr> vault kv get {{ .Values.recovery.fallback.secretPath }}
+    5. Verify fallback vault has new keys:
+       VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<fallback-addr>" }} \
+         vault kv get {{ .Values.recovery.fallback.secretPath }}
 
-    6. Reset rekey flag:
-       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
-         --set recovery.rekey.enabled=false
+    6. Reset all rekey flags:
+       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+         --set recovery.rekey.enabled=false \
+         --set recovery.rekey.confirm=false
 
     Recommended frequency: every 90 days, or after any suspected key material exposure.
 
@@ -41,10 +47,10 @@ data:
     1. Seal vault manually:
        vault operator seal
 
-    2. Trigger recovery job:
-       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
-         --set recovery.enabled=true \
-         --set recovery.fallback.addr=<FALLBACK-ADDR>
+    2. Trigger recovery job with a unique ID:
+       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+         --set recovery.triggerId=drill-$(date +%Y%m%d%H%M%S) \
+         --set recovery.fallback.addr={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }}
 
     3. Monitor recovery:
        kubectl logs -n {{ .Release.Namespace }} job/vault-recovery-job -f
@@ -52,29 +58,33 @@ data:
     4. Verify vault is unsealed:
        vault status | grep "Sealed.*false"
 
-    5. Reset recovery flag:
-       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
-         --set recovery.enabled=false
+    5. Reset triggerId:
+       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+         --set recovery.triggerId=""
 
   full-outage-recovery.md: |
     # Full Outage Recovery (all clusters sealed)
 
     When all clusters in the mesh are sealed simultaneously:
 
-    1. Identify the manual seed cluster (pre-designated, documented here):
+    1. Identify the manual seed cluster (pre-designated):
        Seed cluster: {{ .Values.recovery.selfName | default "<configure recovery.selfName>" }}
 
-    2. Manually unseal the seed cluster:
+    2. Manually unseal the seed cluster (keys from secure out-of-band storage):
        vault operator unseal <key-1>
        vault operator unseal <key-2>
        vault operator unseal <key-3>
 
     3. Once seed is unsealed, trigger recovery on each peer in order:
-       helm upgrade vault ./vault -n <peer-namespace> \
-         --set recovery.enabled=true \
+       helm upgrade vault-recovery-fabric ./vault -n <peer-namespace> \
+         --set recovery.triggerId=outage-recovery-$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr=<seed-cluster-addr>
 
-    4. Verify cascade recovery completes on each peer.
+    4. Reset triggerId after each peer recovers:
+       helm upgrade vault-recovery-fabric ./vault -n <peer-namespace> \
+         --set recovery.triggerId=""
+
+    5. Verify cascade recovery on all peers.
 
   audit-requirements.md: |
     # Audit Log Requirements

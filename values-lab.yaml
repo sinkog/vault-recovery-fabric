@@ -7,8 +7,9 @@ networkPolicy:
 recovery:
   triggerId: ""
   rekey:
-    experimental: true
+    enabled: false
     confirm: false
+    experimental: true
     keyShares: 1
     keyThreshold: 1
   encryption:

@@ -1,7 +1,10 @@
-{{- if and .Values.recovery.rekey.confirm (not .Values.recovery.rekey.experimental) }}
+{{- if and .Values.recovery.rekey.enabled (not .Values.recovery.rekey.confirm) }}
+{{- fail "rekey requires recovery.rekey.confirm=true" }}
+{{- end }}
+{{- if and .Values.recovery.rekey.enabled .Values.recovery.rekey.confirm (not .Values.recovery.rekey.experimental) }}
 {{- fail "rekey requires recovery.rekey.experimental=true — acknowledge you understand the risks" }}
 {{- end }}
-{{- if and .Values.recovery.rekey.confirm .Values.recovery.rekey.experimental }}
+{{- if and .Values.recovery.rekey.enabled .Values.recovery.rekey.confirm .Values.recovery.rekey.experimental }}
 apiVersion: batch/v1
 kind: Job
 metadata:

@@ -73,7 +73,7 @@ This threat model covers the vault-recovery-fabric chart in multi-cluster recove
 
 - **Mitigated in M3.3**: `set -x` removed from all job scripts
 - Root token echo removed
-- Residual risk: `vault operator unseal $key` — the key argument may appear in process list
+- Mitigated: unseal via `curl -d '{"key":"..."}' /v1/sys/unseal` — key is not a process argument
 
 ---
 
@@ -82,7 +82,7 @@ This threat model covers the vault-recovery-fabric chart in multi-cluster recove
 | Priority | Action |
 |---|---|
 | Must | Enable `recovery.encryption.enabled=true` in production |
-| Must | Delete `secret/vault/init-token` after initial bootstrap |
+| Must | Handle bootstrap root token out-of-band: store, rotate, or revoke per your root-token custody process |
 | Must | Set `recovery.fallback.tlsSkipVerify: false` |
 | Should | Enable Vault audit log on all clusters |
 | Should | Monitor `auth/kubernetes/login` events on all fallback vaults |

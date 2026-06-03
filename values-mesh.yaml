@@ -15,8 +15,9 @@ recovery:
     tlsSkipVerify: false
     cidr: "10.0.0.0/8"
   rekey:
-    experimental: true
+    enabled: false
     confirm: false
+    experimental: true
     keyShares: 5
     keyThreshold: 3
   encryption:

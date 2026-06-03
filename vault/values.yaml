@@ -20,8 +20,9 @@ recovery:
     tlsSkipVerify: false
     cidr: ""
   rekey:
-    experimental: true
+    enabled: false
     confirm: false
+    experimental: true
     keyShares: 5
     keyThreshold: 3
   encryption:
@@ -52,9 +53,14 @@ vault:
             role=vault-unseal \
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"); do sleep 4; done
         export VAULT_TOKEN
-        vault kv get -field=contents secret/vault/unseal-keys | grep -v '^$' | while IFS= read -r key; do
-          printf '{"key":"%s"}' "$key" | \
-            curl -sf --request PUT --data @- \
-              http://localhost:8200/v1/sys/unseal > /dev/null
-        done
+        UNSEAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys 2>/dev/null || true)
+        if [ -n "$UNSEAL_KEYS" ]; then
+          echo "$UNSEAL_KEYS" | grep -v '^$' | while IFS= read -r key; do
+            printf '{"key":"%s"}' "$key" | \
+              curl -sf --request PUT --data @- \
+                http://localhost:8200/v1/sys/unseal > /dev/null
+          done
+        else
+          echo "No local unseal keys found — manual or mesh recovery required"
+        fi
       fi

@@ -1,12 +1,12 @@
-{{- if .Values.recovery.enabled }}
+{{- if .Values.recovery.selfName }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vault-mesh-setup
 data:
   README: |
-    Cross-cluster recovery mesh setup (M4.2)
-    =========================================
+    Cross-cluster recovery mesh setup
+    ===================================
     Run these steps on the FALLBACK Vault cluster to allow this cluster's
     recovery job to authenticate and read unseal keys.
 
@@ -34,14 +34,35 @@ data:
          ttl=5m \
          token_num_uses=2
 
-    4. Store this cluster's unseal keys on the fallback Vault:
+    4a. [LAB ONLY] Store raw unseal keys on the fallback Vault:
+
+       WARNING: raw key storage is for local testing only.
+       Do not use in production — use the encrypted flow below.
 
        vault kv put {{ .Values.recovery.fallback.secretPath }} \
-         contents=@/path/to/unseal-keys.txt
+         contents=@/tmp/vault-unseal.txt
+
+    4b. [PRODUCTION] Store encrypted recovery material on the fallback Vault:
+
+       kubectl create secret generic vault-recovery-passphrase \
+         -n {{ .Release.Namespace }} \
+         --from-literal=passphrase="$(openssl rand -base64 32)"
+
+       PASSPHRASE=$(kubectl get secret vault-recovery-passphrase \
+         -n {{ .Release.Namespace }} -o jsonpath='{.data.passphrase}' | base64 -d)
+       ENCRYPTED=$(vault kv get -field=contents {{ .Values.recovery.fallback.secretPath }} \
+         | openssl enc -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" | openssl base64 -A)
+       VAULT_ADDR={{ .Values.recovery.fallback.addr }} \
+         vault kv put {{ .Values.recovery.fallback.secretPath }} contents="$ENCRYPTED"
 
     5. Trigger recovery:
 
-       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
-         --set recovery.enabled=true \
-         --set recovery.fallback.addr=<FALLBACK-VAULT-ADDR>
+       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+         --set recovery.triggerId=$(date +%Y%m%d%H%M%S) \
+         --set recovery.fallback.addr={{ .Values.recovery.fallback.addr | default "<FALLBACK-VAULT-ADDR>" }}
+
+    6. Reset after recovery:
+
+       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+         --set recovery.triggerId=""
 {{- end }}

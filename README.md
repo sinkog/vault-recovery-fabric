@@ -54,10 +54,20 @@ helm upgrade -i vault ./vault -n kube-vault --create-namespace
 After install, the init job runs once and:
 - Initializes Vault
 - Configures Kubernetes auth
-- Stores unseal keys in `secret/vault/unseal-keys`
 - Configures the `vault-recovery-unseal` K8s auth role
+- Does **not** store unseal keys locally by default (`bootstrap.storeUnsealKeys: false`)
 
-Subsequent pod restarts auto-unseal via the postStart hook using K8s auth.
+> **postStart auto-unseal**: the postStart hook attempts to read unseal keys from
+> `secret/vault/unseal-keys` on the local Vault. This only works when
+> `bootstrap.storeUnsealKeys=true`. Without local keys, the pod starts and logs
+> a warning — unseal is then handled via the recovery Job or manual intervention.
+
+**Lab install** (local auto-unseal enabled):
+
+```bash
+helm upgrade -i vault-recovery-fabric ./vault -n kube-vault \
+  --create-namespace -f values-lab.yaml
+```
 
 Run smoke tests:
 ```bash
@@ -133,8 +143,9 @@ helm upgrade vault ./vault -n kube-vault \
   --set recovery.rekey.confirm=true \
   --set recovery.rekey.experimental=true
 
-# After completion, reset both flags:
-helm upgrade vault ./vault -n kube-vault \
+# After completion, reset all flags:
+helm upgrade vault-recovery-fabric ./vault -n kube-vault \
+  --set recovery.rekey.enabled=false \
   --set recovery.rekey.confirm=false
 ```
 
@@ -188,7 +199,7 @@ access to the K8s API of the target cluster.
 | `recovery.selfName` | `""` | This cluster's name in the mesh |
 | `recovery.fallback.addr` | `""` | Fallback Vault API address (required when triggerId set) |
 | `recovery.fallback.tlsSkipVerify` | `false` | Skip TLS verification (**never use in production**) |
-| `recovery.fallback.cidr` | `""` | Fallback Vault CIDR for NetworkPolicy egress (recommended in production) |
+| `recovery.fallback.cidr` | `""` | Fallback Vault CIDR for NetworkPolicy egress — **required in production-like mode**; without it egress is broad |
 | `recovery.rekey.experimental` | `true` | Acknowledge rekey is experimental |
 | `recovery.rekey.confirm` | `false` | Must be `true` to trigger rekey job |
 | `recovery.rekey.keyShares` | `5` | Number of new key shares |

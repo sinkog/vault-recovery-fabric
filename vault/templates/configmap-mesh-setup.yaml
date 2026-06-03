@@ -44,15 +44,24 @@ data:
 
     4b. [PRODUCTION] Store encrypted recovery material on the fallback Vault:
 
+       # Create passphrase on THIS cluster
        kubectl create secret generic vault-recovery-passphrase \
          -n {{ .Release.Namespace }} \
          --from-literal=passphrase="$(openssl rand -base64 32)"
 
+       # Read passphrase from THIS cluster
        PASSPHRASE=$(kubectl get secret vault-recovery-passphrase \
          -n {{ .Release.Namespace }} -o jsonpath='{.data.passphrase}' | base64 -d)
-       ENCRYPTED=$(vault kv get -field=contents {{ .Values.recovery.fallback.secretPath }} \
+
+       # Read unseal keys from THIS cluster's local Vault (requires storeUnsealKeys=true in lab)
+       # In production, source material must be obtained via out-of-band bootstrap process
+       LOCAL_KEYS=$(VAULT_ADDR=http://vault-active.{{ .Release.Namespace }}:8200 \
+         vault kv get -field=contents secret/vault/unseal-keys)
+
+       # Encrypt and write to FALLBACK Vault
+       ENCRYPTED=$(echo "$LOCAL_KEYS" \
          | openssl enc -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" | openssl base64 -A)
-       VAULT_ADDR={{ .Values.recovery.fallback.addr }} \
+       VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-VAULT-ADDR>" }} \
          vault kv put {{ .Values.recovery.fallback.secretPath }} contents="$ENCRYPTED"
 
     5. Trigger recovery:

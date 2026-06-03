@@ -22,11 +22,9 @@ Recovery-plane:
 Each cluster has exactly one fallback. The mesh forms a ring:
 
 ```
-  Vault-A  ──(fallback)──►  Vault-B
-     ▲                          │
-     │                    (fallback)
-     │                          ▼
-  Vault-C  ◄──(fallback)──  Vault-C
+Vault-A ──fallback──► Vault-B
+Vault-B ──fallback──► Vault-C
+Vault-C ──fallback──► Vault-A
 ```
 
 Partial failure: the sealed cluster's neighbour provides recovery material.
@@ -38,19 +36,21 @@ Full outage: operator manually unseals one cluster (manual seed), the mesh recov
 vault/
   server (StatefulSet, 3 replicas)
     Integrated Raft storage
-    postStart: auto-unseal via K8s auth → vault-active
+    postStart: auto-unseal via K8s auth → local KV (requires bootstrap.storeUnsealKeys=true)
+               if no local keys found: logs warning, pod starts sealed
     serviceAccount: vault
 
   vault-wait-job (init, runs once)
     serviceAccount: vault-recovery
-    Initializes vault, configures K8s auth, stores unseal keys in KV
+    Initializes vault, configures K8s auth
+    Stores unseal keys in KV only if bootstrap.storeUnsealKeys=true
 
-  vault-recovery-job (on-demand, recovery.enabled=true)
+  vault-recovery-job (on-demand, triggered by recovery.triggerId=<unique-event-id>)
     serviceAccount: vault-recovery
     initContainer: K8s auth against fallback vault → short-lived token (Memory emptyDir)
-    main: fetch unseal keys → sys/unseal → cleanup
+    main: fetch unseal keys → sys/unseal via curl → cleanup
 
-  vault-rekey-job (on-demand, recovery.rekey.enabled=true)
+  vault-rekey-job (on-demand, recovery.rekey.enabled=true + confirm=true + experimental=true)
     serviceAccount: vault-recovery
     Rotates unseal keys via vault operator rekey
     Optionally encrypts new keys (AES-256-CBC, openssl)
@@ -70,7 +70,7 @@ vault/
 ## NetworkPolicy notes
 
 When `recovery.triggerId` is set and `recovery.fallback.cidr` is empty, egress allows
-port 8200/443 broadly. Set `recovery.fallback.cidr` in production to restrict egress
+port 8200/443 broadly. **Set `recovery.fallback.cidr` in production** to restrict egress
 to the known fallback Vault CIDR range.
 
 ## Key invariants
@@ -79,3 +79,4 @@ to the known fallback Vault CIDR range.
 2. **Ephemeral access**: no fixed passwords, K8s SA JWT → short TTL tokens
 3. **Memory-only secrets**: emptyDir `medium: Memory` between init and main containers
 4. **Idempotent operations**: init job and recovery job exit cleanly if already done
+5. **postStart is best-effort**: fails gracefully if no local unseal keys — mesh recovery handles unsealing

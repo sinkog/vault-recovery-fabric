@@ -64,7 +64,7 @@ spec:
 
       echo "=== recovery auth checks passed ==="
   restartPolicy: Never
-{{- if .Values.recovery.enabled }}
+{{- if .Values.recovery.fallback.addr }}
 ---
 apiVersion: v1
 kind: Pod

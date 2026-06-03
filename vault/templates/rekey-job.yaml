@@ -1,0 +1,115 @@
+{{- if .Values.recovery.rekey.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-rekey-job
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: vault-rekey
+    spec:
+      serviceAccountName: vault-recovery
+      containers:
+      - name: vault-rekey
+        image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+        command: ["sh", "-c"]
+        args:
+        - |
+          export VAULT_ADDR=http://vault-active:8200
+
+          while ! vault status 2>/dev/null; do sleep 2; done
+          if vault status | grep -q "Sealed.*true"; then
+            echo "Vault is sealed, cannot rekey"
+            exit 1
+          fi
+
+          VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login \
+            role=vault-recovery-unseal \
+            jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
+          export VAULT_TOKEN
+
+          vault kv get -field=contents secret/vault/unseal-keys \
+            | grep -v '^$' > /tmp/current-keys.txt
+
+          if [ ! -s /tmp/current-keys.txt ]; then
+            echo "No current unseal keys found in KV"
+            exit 1
+          fi
+
+          vault operator rekey -cancel 2>/dev/null || true
+
+          NONCE=$(vault operator rekey \
+            -init \
+            -key-shares={{ .Values.recovery.rekey.keyShares }} \
+            -key-threshold={{ .Values.recovery.rekey.keyThreshold }} \
+            | grep -i 'nonce' | awk '{print $NF}')
+
+          if [ -z "$NONCE" ]; then
+            echo "Rekey init failed: no nonce returned"
+            exit 1
+          fi
+
+          NEW_KEYS=""
+          while IFS= read -r key; do
+            OUTPUT=$(vault operator rekey -nonce="$NONCE" "$key" 2>/dev/null)
+            if echo "$OUTPUT" | grep -q "^Key 1:"; then
+              NEW_KEYS=$(echo "$OUTPUT" | grep "^Key [0-9]*:" | awk '{print $3}')
+              break
+            fi
+          done < /tmp/current-keys.txt
+
+          rm -f /tmp/current-keys.txt
+
+          if [ -z "$NEW_KEYS" ]; then
+            echo "Rekey failed: insufficient key shares"
+            exit 1
+          fi
+
+          {{- if .Values.recovery.encryption.enabled }}
+          PASSPHRASE=$(cat /encryption/passphrase)
+          STORE_VALUE=$(echo "$NEW_KEYS" | \
+            openssl enc -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" | \
+            openssl base64 -A)
+          {{- else }}
+          STORE_VALUE="$NEW_KEYS"
+          {{- end }}
+
+          vault kv put secret/vault/unseal-keys contents="$STORE_VALUE"
+          echo "Local KV updated with new keys"
+
+          {{- if .Values.recovery.enabled }}
+          FALLBACK_TOKEN=$(vault write -field=token \
+            {{ .Values.recovery.fallback.k8sAuthPath }}/login \
+            role={{ .Values.recovery.fallback.vaultRole }} \
+            jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+            {{- if .Values.recovery.fallback.tlsSkipVerify }}
+            VAULT_SKIP_VERIFY=true \
+            {{- end }}
+          )
+          VAULT_ADDR={{ .Values.recovery.fallback.addr }} \
+          VAULT_TOKEN="$FALLBACK_TOKEN" \
+            vault kv put {{ .Values.recovery.fallback.secretPath }} contents="$STORE_VALUE"
+          echo "Fallback vault updated with new keys"
+          {{- end }}
+
+          echo "Rekey complete — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        {{- if .Values.recovery.encryption.enabled }}
+        volumeMounts:
+        - name: encryption-passphrase
+          mountPath: /encryption
+          readOnly: true
+        {{- end }}
+      restartPolicy: Never
+      {{- if .Values.recovery.encryption.enabled }}
+      volumes:
+      - name: encryption-passphrase
+        secret:
+          secretName: {{ .Values.recovery.encryption.passphraseSecret }}
+          items:
+          - key: passphrase
+            path: passphrase
+      {{- end }}
+  backoffLimit: 1
+{{- end }}

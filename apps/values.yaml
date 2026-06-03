@@ -1,0 +1,7 @@
+spec:
+  destination:
+    namespace: kube-vault
+    server: https://kubernetes.default.svc
+  project: infra-project
+  source:
+    preRepoURL: https://project.nksz.hu/devops

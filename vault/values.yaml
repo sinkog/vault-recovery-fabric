@@ -1,0 +1,49 @@
+networkPolicy:
+  enabled: true
+
+recovery:
+  enabled: false
+  selfName: ""
+  fallback:
+    addr: ""
+    k8sAuthPath: "auth/kubernetes"
+    vaultRole: "vault-recovery-unseal"
+    secretPath: "secret/vault/unseal-keys"
+    tlsSkipVerify: false
+    cidr: ""
+  rekey:
+    enabled: false
+    keyShares: 5
+    keyThreshold: 3
+  encryption:
+    enabled: false
+    passphraseSecret: ""
+
+vault:
+  server:
+    serviceAccount:
+      createSecret: true
+    affinity: ""
+    ha:
+      enabled: true
+      raft:
+        enabled: true
+    postStart:
+    - sh
+    - -c
+    - |
+      if [[ "$HOSTNAME" != "vault-0" ]] || nc -z vault-active 8200; then
+        while ! nc -z vault-active 8200; do sleep 1; done
+        export VAULT_ADDR=http://vault-active:8200
+        while ! vault status | grep "Initialized" | grep "true"; do sleep 2; done
+        export VAULT_ADDR=http://localhost:8200
+        while ! vault operator raft join http://vault-active:8200; do sleep 3; done
+        export VAULT_ADDR=http://vault-active:8200
+        while ! VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login \
+            role=vault-unseal \
+            jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"); do sleep 4; done
+        export VAULT_TOKEN
+        vault kv get -field=contents secret/vault/unseal-keys | grep -v '^$' | while read line; do
+          VAULT_ADDR=http://localhost:8200 vault operator unseal $line
+        done
+      fi

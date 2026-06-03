@@ -1,0 +1,63 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-init-job
+spec:
+  podSelector:
+    matchLabels:
+      app: vault-wait
+  policyTypes:
+  - Egress
+  egress:
+  - ports:
+    - port: 8200
+      protocol: TCP
+  - ports:
+    - port: 443
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-server
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - port: 8200
+      protocol: TCP
+    - port: 8201
+      protocol: TCP
+{{- if .Values.recovery.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-recovery-job
+spec:
+  podSelector:
+    matchLabels:
+      app: vault-recovery
+  policyTypes:
+  - Egress
+  egress:
+  - ports:
+    - port: 8200
+      protocol: TCP
+    - port: 443
+      protocol: TCP
+  {{- if .Values.recovery.fallback.cidr }}
+  - to:
+    - ipBlock:
+        cidr: {{ .Values.recovery.fallback.cidr }}
+    ports:
+    - port: 8200
+      protocol: TCP
+  {{- end }}
+{{- end }}
+{{- end }}

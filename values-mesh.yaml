@@ -1,0 +1,27 @@
+networkPolicy:
+  enabled: true
+
+recovery:
+  enabled: false
+  selfName: "vault-a"
+  fallback:
+    addr: "https://vault.kube-vault-b.example.com:8200"
+    k8sAuthPath: "auth/kubernetes"
+    vaultRole: "vault-recovery-unseal"
+    secretPath: "secret/vault/unseal-keys"
+    tlsSkipVerify: false
+    cidr: "10.0.0.0/8"
+  rekey:
+    enabled: false
+    keyShares: 5
+    keyThreshold: 3
+  encryption:
+    enabled: true
+    passphraseSecret: "vault-recovery-passphrase"
+
+vault:
+  server:
+    ha:
+      enabled: true
+      raft:
+        enabled: true

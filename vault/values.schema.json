@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "properties": {
+        "enabled":  { "type": "boolean" },
+        "selfName": { "type": "string" },
+        "fallback": {
+          "type": "object",
+          "properties": {
+            "addr":          { "type": "string" },
+            "k8sAuthPath":   { "type": "string" },
+            "vaultRole":     { "type": "string" },
+            "secretPath":    { "type": "string" },
+            "tlsSkipVerify": { "type": "boolean" },
+            "cidr":          { "type": "string" }
+          }
+        },
+        "rekey": {
+          "type": "object",
+          "properties": {
+            "enabled":      { "type": "boolean" },
+            "keyShares":    { "type": "integer", "minimum": 1 },
+            "keyThreshold": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "encryption": {
+          "type": "object",
+          "properties": {
+            "enabled":          { "type": "boolean" },
+            "passphraseSecret": { "type": "string" }
+          },
+          "if": { "properties": { "enabled": { "const": true } } },
+          "then": { "required": ["passphraseSecret"] }
+        }
+      }
+    },
+    "vault": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "object",
+          "properties": {
+            "ha": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "raft": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean" }
+                  }
+                }
+              }
+            },
+            "affinity":     { "type": "string" },
+            "postStart":    { "type": "array" },
+            "serviceAccount": {
+              "type": "object",
+              "properties": {
+                "createSecret": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

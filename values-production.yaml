@@ -1,0 +1,37 @@
+networkPolicy:
+  enabled: true
+
+recovery:
+  enabled: false
+  selfName: ""
+  fallback:
+    addr: ""
+    k8sAuthPath: "auth/kubernetes"
+    vaultRole: "vault-recovery-unseal"
+    secretPath: "secret/vault/unseal-keys"
+    tlsSkipVerify: false
+    cidr: ""
+  rekey:
+    enabled: false
+    keyShares: 5
+    keyThreshold: 3
+  encryption:
+    enabled: true
+    passphraseSecret: "vault-recovery-passphrase"
+
+vault:
+  server:
+    serviceAccount:
+      createSecret: true
+    ha:
+      enabled: true
+      raft:
+        enabled: true
+    affinity: |
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+              component: server
+          topologyKey: kubernetes.io/hostname

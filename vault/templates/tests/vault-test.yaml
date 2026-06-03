@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vault-test-health
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: vault-recovery
+  containers:
+  - name: vault-test-health
+    image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+    command: ["sh", "-c"]
+    args:
+    - |
+      export VAULT_ADDR=http://vault-active:8200
+
+      echo "=== vault reachable ==="
+      vault status || exit 1
+
+      echo "=== vault initialized ==="
+      vault status | grep -q "Initialized.*true" || exit 1
+
+      echo "=== vault unsealed ==="
+      vault status | grep -q "Sealed.*false" || exit 1
+
+      echo "=== health checks passed ==="
+  restartPolicy: Never
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vault-test-recovery-auth
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: vault-recovery
+  containers:
+  - name: vault-test-recovery-auth
+    image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+    command: ["sh", "-c"]
+    args:
+    - |
+      export VAULT_ADDR=http://vault-active:8200
+
+      echo "=== vault-recovery-unseal K8s auth role ==="
+      VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login \
+        role=vault-recovery-unseal \
+        jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)") || exit 1
+      export VAULT_TOKEN
+
+      echo "=== recovery material readable ==="
+      vault kv get secret/vault/unseal-keys || exit 1
+
+      echo "=== token TTL within 5m limit ==="
+      TTL=$(vault token lookup -field=ttl 2>/dev/null || echo "0")
+      if [ "$TTL" -gt 300 ]; then
+        echo "FAIL: token TTL $TTL exceeds 300s"
+        exit 1
+      fi
+
+      echo "=== recovery auth checks passed ==="
+  restartPolicy: Never
+{{- if .Values.recovery.enabled }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vault-test-mesh-auth
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: vault-recovery
+  containers:
+  - name: vault-test-mesh-auth
+    image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+    command: ["sh", "-c"]
+    args:
+    - |
+      export VAULT_ADDR={{ .Values.recovery.fallback.addr }}
+      {{- if .Values.recovery.fallback.tlsSkipVerify }}
+      export VAULT_SKIP_VERIFY=true
+      {{- end }}
+
+      echo "=== fallback vault reachable ==="
+      vault status || exit 1
+
+      echo "=== fallback vault K8s auth ==="
+      VAULT_TOKEN=$(vault write -field=token \
+        {{ .Values.recovery.fallback.k8sAuthPath }}/login \
+        role={{ .Values.recovery.fallback.vaultRole }} \
+        jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)") || exit 1
+      export VAULT_TOKEN
+
+      echo "=== recovery material present in fallback vault ==="
+      vault kv get {{ .Values.recovery.fallback.secretPath }} || exit 1
+
+      echo "=== mesh auth checks passed ==="
+  restartPolicy: Never
+{{- end }}

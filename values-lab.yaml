@@ -1,0 +1,19 @@
+networkPolicy:
+  enabled: false
+
+recovery:
+  enabled: false
+  rekey:
+    enabled: false
+    keyShares: 1
+    keyThreshold: 1
+  encryption:
+    enabled: false
+
+vault:
+  server:
+    affinity: ""
+    ha:
+      enabled: true
+      raft:
+        enabled: true

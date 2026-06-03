@@ -1,0 +1,94 @@
+{{- if .Values.recovery.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-recovery-job
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: vault-recovery
+    spec:
+      serviceAccountName: vault-recovery
+      initContainers:
+      - name: recovery-auth
+        image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+        command: ["sh", "-c"]
+        args:
+        - |
+          export VAULT_ADDR={{ .Values.recovery.fallback.addr }}
+          {{- if .Values.recovery.fallback.tlsSkipVerify }}
+          export VAULT_SKIP_VERIFY=true
+          {{- end }}
+          while ! vault status 2>/dev/null; do sleep 2; done
+          VAULT_TOKEN=$(vault write -field=token \
+            {{ .Values.recovery.fallback.k8sAuthPath }}/login \
+            role={{ .Values.recovery.fallback.vaultRole }} \
+            jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
+          echo "$VAULT_TOKEN" > /recovery/vault-token
+        volumeMounts:
+        - name: recovery-data
+          mountPath: /recovery
+      containers:
+      - name: recovery-unseal
+        image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+        command: ["sh", "-c"]
+        args:
+        - |
+          export VAULT_ADDR={{ .Values.recovery.fallback.addr }}
+          {{- if .Values.recovery.fallback.tlsSkipVerify }}
+          export VAULT_SKIP_VERIFY=true
+          {{- end }}
+          export VAULT_TOKEN=$(cat /recovery/vault-token)
+
+          {{- if .Values.recovery.encryption.enabled }}
+          PASSPHRASE=$(cat /encryption/passphrase)
+          vault kv get -field=contents {{ .Values.recovery.fallback.secretPath }} \
+            | openssl base64 -d \
+            | openssl enc -d -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" \
+            | grep -v '^$' > /recovery/unseal-keys
+          {{- else }}
+          vault kv get -field=contents {{ .Values.recovery.fallback.secretPath }} \
+            | grep -v '^$' > /recovery/unseal-keys
+          {{- end }}
+
+          rm -f /recovery/vault-token
+
+          export VAULT_ADDR=http://vault-active:8200
+          while ! vault status 2>/dev/null; do sleep 2; done
+
+          if vault status | grep -q "Sealed.*false"; then
+            echo "Vault already unsealed"
+            rm -f /recovery/unseal-keys
+            exit 0
+          fi
+
+          cat /recovery/unseal-keys | while read key; do
+            vault operator unseal $key
+          done
+          rm -f /recovery/unseal-keys
+          echo "Recovery complete"
+        volumeMounts:
+        - name: recovery-data
+          mountPath: /recovery
+        {{- if .Values.recovery.encryption.enabled }}
+        - name: encryption-passphrase
+          mountPath: /encryption
+          readOnly: true
+        {{- end }}
+      restartPolicy: OnFailure
+      volumes:
+      - name: recovery-data
+        emptyDir:
+          medium: Memory
+      {{- if .Values.recovery.encryption.enabled }}
+      - name: encryption-passphrase
+        secret:
+          secretName: {{ .Values.recovery.encryption.passphraseSecret }}
+          items:
+          - key: passphrase
+            path: passphrase
+      {{- end }}
+  backoffLimit: 3
+{{- end }}

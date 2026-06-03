@@ -1,0 +1,47 @@
+{{- if .Values.recovery.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-mesh-setup
+data:
+  README: |
+    Cross-cluster recovery mesh setup (M4.2)
+    =========================================
+    Run these steps on the FALLBACK Vault cluster to allow this cluster's
+    recovery job to authenticate and read unseal keys.
+
+    1. Configure Kubernetes auth for this cluster on the fallback Vault:
+
+       vault write auth/kubernetes/config \
+         token_reviewer_jwt="<fallback-vault-sa-token>" \
+         kubernetes_host="<THIS-cluster-k8s-api>" \
+         kubernetes_ca_cert="<THIS-cluster-ca-cert>"
+
+    2. Create a policy on the fallback Vault for this cluster's recovery material:
+
+       vault policy write {{ .Values.recovery.selfName }}-recovery - <<EOF
+       path "{{ .Values.recovery.fallback.secretPath }}" {
+         capabilities = ["read"]
+       }
+       EOF
+
+    3. Create a Kubernetes auth role on the fallback Vault:
+
+       vault write auth/kubernetes/role/{{ .Values.recovery.fallback.vaultRole }} \
+         bound_service_account_names=vault-recovery \
+         bound_service_account_namespaces={{ .Release.Namespace }} \
+         policies={{ .Values.recovery.selfName }}-recovery \
+         ttl=5m \
+         token_num_uses=2
+
+    4. Store this cluster's unseal keys on the fallback Vault:
+
+       vault kv put {{ .Values.recovery.fallback.secretPath }} \
+         contents=@/path/to/unseal-keys.txt
+
+    5. Trigger recovery:
+
+       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
+         --set recovery.enabled=true \
+         --set recovery.fallback.addr=<FALLBACK-VAULT-ADDR>
+{{- end }}

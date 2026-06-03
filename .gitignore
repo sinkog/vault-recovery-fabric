@@ -1,0 +1,7 @@
+# Packaged chart build artifacts
+*.tgz
+*.tar.gz
+*.zip
+
+# Helm dependency tarballs are intentionally committed
+!vault/charts/*.tgz

@@ -4,4 +4,4 @@ spec:
     server: https://kubernetes.default.svc
   project: infra-project
   source:
-    preRepoURL: https://project.nksz.hu/devops
+    preRepoURL: https://your-git-server/your-org

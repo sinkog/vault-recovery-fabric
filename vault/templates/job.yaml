@@ -12,7 +12,8 @@ spec:
       serviceAccountName: vault-recovery
       containers:
       - name: vault-wait-container
-        image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["sh", "-c"]
         args:
         - |

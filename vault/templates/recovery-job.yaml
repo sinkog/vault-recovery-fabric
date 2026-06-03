@@ -13,7 +13,8 @@ spec:
       serviceAccountName: vault-recovery
       initContainers:
       - name: recovery-auth
-        image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["sh", "-c"]
         args:
         - |
@@ -32,7 +33,8 @@ spec:
           mountPath: /recovery
       containers:
       - name: recovery-unseal
-        image: docker.io/hashicorp/vault:{{ .Chart.AppVersion }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["sh", "-c"]
         args:
         - |

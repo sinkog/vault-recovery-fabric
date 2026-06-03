@@ -6,8 +6,12 @@ image:
 networkPolicy:
   enabled: true
 
+bootstrap:
+  storeUnsealKeys: true
+
 recovery:
   enabled: false
+  triggerId: ""
   selfName: ""
   fallback:
     addr: ""
@@ -17,7 +21,8 @@ recovery:
     tlsSkipVerify: false
     cidr: ""
   rekey:
-    enabled: false
+    experimental: true
+    confirm: false
     keyShares: 5
     keyThreshold: 3
   encryption:
@@ -48,7 +53,9 @@ vault:
             role=vault-unseal \
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"); do sleep 4; done
         export VAULT_TOKEN
-        vault kv get -field=contents secret/vault/unseal-keys | grep -v '^$' | while read line; do
-          VAULT_ADDR=http://localhost:8200 vault operator unseal $line
+        vault kv get -field=contents secret/vault/unseal-keys | grep -v '^$' | while IFS= read -r key; do
+          printf '{"key":"%s"}' "$key" | \
+            curl -sf --request PUT --data @- \
+              http://localhost:8200/v1/sys/unseal > /dev/null
         done
       fi

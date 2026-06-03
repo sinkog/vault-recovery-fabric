@@ -1,4 +1,4 @@
-{{- if .Values.recovery.enabled }}
+{{- if .Values.recovery.triggerId }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -66,9 +66,11 @@ spec:
             exit 0
           fi
 
-          cat /recovery/unseal-keys | while read key; do
-            vault operator unseal $key
-          done
+          while IFS= read -r key; do
+            printf '{"key":"%s"}' "$key" | \
+              curl -sf --request PUT --data @- \
+                "http://vault-active:8200/v1/sys/unseal" > /dev/null
+          done < /recovery/unseal-keys
           rm -f /recovery/unseal-keys
           echo "Recovery complete"
         volumeMounts:

@@ -31,9 +31,11 @@ spec:
           grep Unseal /tmp/keys.txt | awk '{ print $4 }' > /tmp/vault-unseal.txt
           grep Token  /tmp/keys.txt | awk '{ print $4 }' > /tmp/vault-token.txt
 
-          cat /tmp/vault-unseal.txt | while read line; do
-            vault operator unseal $line
-          done
+          while IFS= read -r key; do
+            printf '{"key":"%s"}' "$key" | \
+              curl -sf --request PUT --data @- \
+                "http://vault-0.vault-internal:8200/v1/sys/unseal" > /dev/null
+          done < /tmp/vault-unseal.txt
 
           export VAULT_TOKEN=$(cat /tmp/vault-token.txt)
           export VAULT_ADDR=http://vault-active:8200
@@ -56,7 +58,9 @@ spec:
             ttl=5m \
             token_num_uses=2
           vault secrets enable -path=secret/ kv
+          {{- if .Values.bootstrap.storeUnsealKeys }}
           vault kv put secret/vault/unseal-keys contents=@/tmp/vault-unseal.txt
+          {{- end }}
           ls /mnt/config/* | xargs basename | sed 's/\..*$//' | while read -r line; do
             vault policy write $line /mnt/config/$line.hcl
           done

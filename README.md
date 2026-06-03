@@ -32,7 +32,7 @@ In a full mesh, manually unsealing one cluster is enough — the rest recover au
      ▲                          │
   (fallback)              (fallback)
      │                          ▼
-  Vault-C  ◄──(fallback)──  Vault-C
+  Vault-C  ◄──(fallback)──  Vault-B
 ```
 
 See `docs/architecture.md` for component details and invariants.
@@ -142,6 +142,10 @@ kubectl create secret generic vault-recovery-passphrase \
 
 Fallback Vault compromise alone is insufficient to decrypt — the attacker also needs
 access to the K8s API of the target cluster.
+
+> **Note**: This mode assumes the target cluster Kubernetes Secret store is trusted
+> and protected. Ensure Kubernetes Secret encryption-at-rest is enabled and RBAC
+> restricts access to `vault-recovery-passphrase`.
 
 ## Values reference
 

@@ -10,7 +10,11 @@ spec:
   policyTypes:
   - Egress
   egress:
-  - ports:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: vault
+    ports:
     - port: 8200
       protocol: TCP
   - ports:
@@ -33,7 +37,7 @@ spec:
       protocol: TCP
     - port: 8201
       protocol: TCP
-{{- if .Values.recovery.enabled }}
+{{- if .Values.recovery.triggerId }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -46,10 +50,12 @@ spec:
   policyTypes:
   - Egress
   egress:
-  - ports:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: vault
+    ports:
     - port: 8200
-      protocol: TCP
-    - port: 443
       protocol: TCP
   {{- if .Values.recovery.fallback.cidr }}
   - to:
@@ -57,6 +63,14 @@ spec:
         cidr: {{ .Values.recovery.fallback.cidr }}
     ports:
     - port: 8200
+      protocol: TCP
+    - port: 443
+      protocol: TCP
+  {{- else }}
+  - ports:
+    - port: 8200
+      protocol: TCP
+    - port: 443
       protocol: TCP
   {{- end }}
 {{- end }}

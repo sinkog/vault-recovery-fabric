@@ -32,7 +32,7 @@ recovery:
 vault:
   server:
     serviceAccount:
-      createSecret: true
+      createSecret: false
     affinity: ""
     ha:
       enabled: true

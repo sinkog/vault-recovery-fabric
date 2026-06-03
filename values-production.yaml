@@ -27,7 +27,7 @@ recovery:
 vault:
   server:
     serviceAccount:
-      createSecret: true
+      createSecret: false
     ha:
       enabled: true
       raft:

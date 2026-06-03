@@ -1,5 +1,10 @@
 # Roadmap
 
+> **Megjegyzés**: Ez egy fejlesztési history. A korai mérföldkövek (`recovery.enabled`,
+> `rekey.enabled` egyszerű flag, stb.) azóta felváltotta a `recovery.triggerId` alapú
+> trigger modell és a `rekey.enabled+confirm+experimental` triple gate. A lenti leírások
+> az eredeti tervezési döntések kontextusát őrzik.
+
 A teljes fejlesztési kontextus: `context.md`
 
 ---

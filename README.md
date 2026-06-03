@@ -101,21 +101,26 @@ kubectl create secret generic vault-recovery-passphrase \
   -n kube-vault \
   --from-literal=passphrase="$(openssl rand -base64 32)"
 
-# Encrypt local unseal keys and store on fallback Vault
 PASSPHRASE=$(kubectl get secret vault-recovery-passphrase \
   -n kube-vault -o jsonpath='{.data.passphrase}' | base64 -d)
-ENCRYPTED=$(vault kv get -field=contents secret/vault/unseal-keys \
+
+# Source: your secure out-of-band bootstrap custody (do not use local KV in production)
+# The unseal keys were obtained during vault operator init — store them securely
+ENCRYPTED=$(cat /secure/bootstrap/vault-a-unseal-keys.txt \
   | openssl enc -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" | openssl base64 -A)
 VAULT_ADDR=<vault-b-addr> vault kv put secret/vault/unseal-keys contents="$ENCRYPTED"
 ```
 
+> **Note**: Production setups must source recovery material from secure out-of-band
+> bootstrap custody — not from local KV. The chart does not persist unseal keys by
+> default (`bootstrap.storeUnsealKeys: false`).
+
 > **Lab only (raw — not suitable for production):**
 > ```bash
+> # Requires bootstrap.storeUnsealKeys=true
 > KEYS=$(vault kv get -field=contents secret/vault/unseal-keys)
 > VAULT_ADDR=<vault-b-addr> vault kv put secret/vault/unseal-keys contents="$KEYS"
 > ```
-> Raw recovery material storage requires `bootstrap.storeUnsealKeys=true` and is not
-> recommended outside of local testing environments.
 
 ### 4. Trigger recovery when needed
 
@@ -136,10 +141,16 @@ helm upgrade vault ./vault -n kube-vault \
 
 ## Key Rotation (Rekey)
 
-Rekey is a destructive, high-impact operation and requires explicit double confirmation:
+Rekey is a destructive, high-impact operation and requires explicit triple confirmation.
+
+> **Prerequisites**: the Rekey Job reads current unseal keys from `secret/vault/unseal-keys`
+> on the local Vault. This requires either `bootstrap.storeUnsealKeys=true` (lab) or
+> the recovery material to have been loaded into the local KV via the mesh setup process.
+> If neither applies, provide the material out-of-band before triggering rekey.
 
 ```bash
-helm upgrade vault ./vault -n kube-vault \
+helm upgrade vault-recovery-fabric ./vault -n kube-vault \
+  --set recovery.rekey.enabled=true \
   --set recovery.rekey.confirm=true \
   --set recovery.rekey.experimental=true
 

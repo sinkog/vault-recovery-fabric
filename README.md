@@ -28,11 +28,9 @@ In a full mesh, manually unsealing one cluster is enough — the rest recover au
 ## Architecture
 
 ```
-  Vault-A  ──(fallback)──►  Vault-B
-     ▲                          │
-  (fallback)              (fallback)
-     │                          ▼
-  Vault-C  ◄──(fallback)──  Vault-B
+Vault-A ──fallback──► Vault-B
+Vault-B ──fallback──► Vault-C
+Vault-C ──fallback──► Vault-A
 ```
 
 See `docs/architecture.md` for component details and invariants.
@@ -90,21 +88,33 @@ VAULT_ADDR=<vault-b-addr> vault kv put secret/vault/unseal-keys contents="$KEYS"
 
 ### 4. Trigger recovery when needed
 
+Each recovery is an explicit event identified by a unique `triggerId`:
+
 ```bash
 helm upgrade vault ./vault -n kube-vault \
-  --set recovery.enabled=true \
+  --set recovery.triggerId=$(date +%Y%m%d%H%M%S) \
   --set recovery.fallback.addr=https://vault-b.example.com:8200
+```
+
+After recovery completes, reset:
+
+```bash
+helm upgrade vault ./vault -n kube-vault \
+  --set recovery.triggerId=""
 ```
 
 ## Key Rotation (Rekey)
 
+Rekey is a destructive, high-impact operation and requires explicit double confirmation:
+
 ```bash
 helm upgrade vault ./vault -n kube-vault \
-  --set recovery.rekey.enabled=true
+  --set recovery.rekey.confirm=true \
+  --set recovery.rekey.experimental=true
 
-# After completion, reset:
+# After completion, reset both flags:
 helm upgrade vault ./vault -n kube-vault \
-  --set recovery.rekey.enabled=false
+  --set recovery.rekey.confirm=false
 ```
 
 See drill procedures: `kubectl get configmap vault-recovery-drill -n kube-vault`
@@ -151,17 +161,24 @@ access to the K8s API of the target cluster.
 
 | Key | Default | Description |
 |---|---|---|
+| `bootstrap.storeUnsealKeys` | `false` | Store unseal keys in local KV (lab only — see note) |
 | `networkPolicy.enabled` | `true` | Deploy NetworkPolicy resources |
-| `recovery.enabled` | `false` | Trigger recovery job |
+| `recovery.triggerId` | `""` | Non-empty triggers recovery job (unique per event) |
 | `recovery.selfName` | `""` | This cluster's name in the mesh |
-| `recovery.fallback.addr` | `""` | Fallback Vault API address |
-| `recovery.fallback.tlsSkipVerify` | `false` | Skip TLS verification (not for production) |
-| `recovery.fallback.cidr` | `""` | Fallback vault CIDR for NetworkPolicy egress |
-| `recovery.rekey.enabled` | `false` | Trigger rekey job |
+| `recovery.fallback.addr` | `""` | Fallback Vault API address (required when triggerId set) |
+| `recovery.fallback.tlsSkipVerify` | `false` | Skip TLS verification (**never use in production**) |
+| `recovery.fallback.cidr` | `""` | Fallback Vault CIDR for NetworkPolicy egress (recommended in production) |
+| `recovery.rekey.experimental` | `true` | Acknowledge rekey is experimental |
+| `recovery.rekey.confirm` | `false` | Must be `true` to trigger rekey job |
 | `recovery.rekey.keyShares` | `5` | Number of new key shares |
 | `recovery.rekey.keyThreshold` | `3` | Unseal threshold |
-| `recovery.encryption.enabled` | `false` | Encrypt recovery material with AES-256 |
+| `recovery.encryption.enabled` | `false` | Encrypt recovery material with AES-256 (**required in production**) |
 | `recovery.encryption.passphraseSecret` | `""` | K8s Secret name containing `passphrase` key |
+
+> **Lab vs production**: `bootstrap.storeUnsealKeys=true` and `recovery.encryption.enabled=false`
+> are acceptable for local testing only. Raw recovery material storage and unencrypted
+> fallback transfer are not suitable for production-like deployments.
+> Use `values-mesh.yaml` or `values-production.yaml` as a starting point.
 
 ## Security
 

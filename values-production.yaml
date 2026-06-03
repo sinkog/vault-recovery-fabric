@@ -1,8 +1,11 @@
+bootstrap:
+  storeUnsealKeys: false
+
 networkPolicy:
   enabled: true
 
 recovery:
-  enabled: false
+  triggerId: ""
   selfName: ""
   fallback:
     addr: ""
@@ -12,7 +15,8 @@ recovery:
     tlsSkipVerify: false
     cidr: ""
   rekey:
-    enabled: false
+    experimental: true
+    confirm: false
     keyShares: 5
     keyThreshold: 3
   encryption:

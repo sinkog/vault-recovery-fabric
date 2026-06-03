@@ -40,8 +40,8 @@ spec:
           export VAULT_TOKEN=$(cat /tmp/vault-token.txt)
           export VAULT_ADDR=http://vault-active:8200
 
-          vault secrets enable -version=2 kv
-          vault auth enable kubernetes
+          vault secrets list | grep -q '^kv/' || vault secrets enable -version=2 kv
+          vault auth list   | grep -q '^kubernetes/' || vault auth enable kubernetes
           vault write auth/kubernetes/config \
             token_reviewer_jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
             kubernetes_host=https://${KUBERNETES_PORT_443_TCP_ADDR}:443 \
@@ -57,7 +57,7 @@ spec:
             policies=vault-unseal \
             ttl=5m \
             token_num_uses=2
-          vault secrets enable -path=secret/ kv
+          vault secrets list | grep -q '^secret/' || vault secrets enable -path=secret -version=2 kv
           {{- if .Values.bootstrap.storeUnsealKeys }}
           vault kv put secret/vault/unseal-keys contents=@/tmp/vault-unseal.txt
           {{- end }}

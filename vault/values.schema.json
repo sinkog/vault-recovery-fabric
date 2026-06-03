@@ -25,7 +25,6 @@
     "recovery": {
       "type": "object",
       "properties": {
-        "enabled":   { "type": "boolean" },
         "triggerId": { "type": "string" },
         "selfName":  { "type": "string" },
         "fallback": {

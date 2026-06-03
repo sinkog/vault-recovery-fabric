@@ -7,10 +7,9 @@ networkPolicy:
   enabled: true
 
 bootstrap:
-  storeUnsealKeys: true
+  storeUnsealKeys: false
 
 recovery:
-  enabled: false
   triggerId: ""
   selfName: ""
   fallback:

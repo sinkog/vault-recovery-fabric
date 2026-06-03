@@ -1,5 +1,5 @@
 {{- if and .Values.recovery.rekey.confirm (not .Values.recovery.rekey.experimental) }}
-{{- fail "rekey is experimental: also set recovery.rekey.experimental=true to confirm you understand the risks" }}
+{{- fail "rekey requires recovery.rekey.experimental=true — acknowledge you understand the risks" }}
 {{- end }}
 {{- if and .Values.recovery.rekey.confirm .Values.recovery.rekey.experimental }}
 apiVersion: batch/v1
@@ -83,18 +83,19 @@ spec:
           vault kv put secret/vault/unseal-keys contents="$STORE_VALUE"
           echo "Local KV updated with new keys"
 
-          {{- if .Values.recovery.enabled }}
+          {{- if .Values.recovery.triggerId }}
+          {{- if .Values.recovery.fallback.tlsSkipVerify }}
+          export VAULT_SKIP_VERIFY=true
+          {{- end }}
+          export VAULT_ADDR={{ .Values.recovery.fallback.addr }}
           FALLBACK_TOKEN=$(vault write -field=token \
             {{ .Values.recovery.fallback.k8sAuthPath }}/login \
             role={{ .Values.recovery.fallback.vaultRole }} \
-            jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
-            {{- if .Values.recovery.fallback.tlsSkipVerify }}
-            VAULT_SKIP_VERIFY=true \
-            {{- end }}
-          )
-          VAULT_ADDR={{ .Values.recovery.fallback.addr }} \
-          VAULT_TOKEN="$FALLBACK_TOKEN" \
-            vault kv put {{ .Values.recovery.fallback.secretPath }} contents="$STORE_VALUE"
+            jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
+          export VAULT_ADDR={{ .Values.recovery.fallback.addr }}
+          VAULT_TOKEN="$FALLBACK_TOKEN" vault kv put \
+            {{ .Values.recovery.fallback.secretPath }} contents="$STORE_VALUE"
+          unset VAULT_SKIP_VERIFY
           echo "Fallback vault updated with new keys"
           {{- end }}
 

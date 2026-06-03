@@ -67,6 +67,12 @@ vault/
     TTL: 1h
 ```
 
+## NetworkPolicy notes
+
+When `recovery.triggerId` is set and `recovery.fallback.cidr` is empty, egress allows
+port 8200/443 broadly. Set `recovery.fallback.cidr` in production to restrict egress
+to the known fallback Vault CIDR range.
+
 ## Key invariants
 
 1. **Recovery-plane separation**: vault-recovery-job never touches the local vault's K8s auth

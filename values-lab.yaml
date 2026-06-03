@@ -1,10 +1,14 @@
+bootstrap:
+  storeUnsealKeys: true
+
 networkPolicy:
   enabled: false
 
 recovery:
-  enabled: false
+  triggerId: ""
   rekey:
-    enabled: false
+    experimental: true
+    confirm: false
     keyShares: 1
     keyThreshold: 1
   encryption:

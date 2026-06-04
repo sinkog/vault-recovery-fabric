@@ -29,6 +29,9 @@ spec:
             mountPath: /vault/recovery-prep
           - name: recovery-init-script
             mountPath: /vault/scripts/recovery-init
+          - name: vault-recovery-token
+            mountPath: /var/run/secrets/vault-recovery
+            readOnly: true
       containers:
       - name: recovery-unseal
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -64,6 +67,9 @@ spec:
         configMap:
           name: vault-poststart-script
           defaultMode: 0755
+      - name: vault-recovery-token
+        secret:
+          secretName: vault-recovery-token
       {{- if .Values.recovery.encryption.enabled }}
       - name: encryption-passphrase
         secret:

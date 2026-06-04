@@ -5,21 +5,22 @@ metadata:
 data:
   recovery-init.sh: |
     #!/bin/sh
-    # Recovery material preparation initContainer.
-    # Runs before vault server starts; fetches unseal keys from fallback Vault
-    # if vault-active is not reachable, and writes them to Memory emptyDir
-    # for postStart to use.
+    # Recovery preparation initContainer.
+    # Fetches a short-lived, single-use token from the fallback Vault and
+    # writes it (plus connection metadata) to Memory emptyDir for postStart.
+    # The main container uses this token to fetch unseal keys directly from
+    # the fallback Vault — unseal keys never touch the emptyDir.
 
     {{- if .Values.recovery.fallback.addr }}
     PREP_DIR=/vault/recovery-prep
     FALLBACK_API={{ .Values.recovery.fallback.addr }}
 
-    # Check if an active unsealed node already exists in this cluster
+    # If vault-active is already unsealed, no recovery needed
     ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
       http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
 
     if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
-      echo "vault-active reachable and unsealed — postStart will handle local unseal"
+      echo "vault-active reachable and unsealed — no recovery prep needed"
       exit 0
     fi
 
@@ -28,7 +29,7 @@ data:
       "${FALLBACK_API}/v1/sys/health" 2>/dev/null || echo "000")
 
     if ! echo "$FB_CODE" | grep -qE '^[2345][0-9][0-9]$'; then
-      echo "Fallback vault not reachable (HTTP ${FB_CODE}), postStart will try local KV"
+      echo "Fallback vault not reachable (HTTP ${FB_CODE})"
       exit 0
     fi
 
@@ -37,39 +38,29 @@ data:
     {{- end }}
     export VAULT_ADDR=$FALLBACK_API
 
-    # Use pod's SA token for fallback Vault K8s auth.
-    # The vault SA is authorized for the fallback vault-recovery-unseal role
-    # (configure this role on the fallback Vault to accept both vault and vault-recovery SA).
+    # Get single-use short-lived token from fallback Vault via K8s auth
     VAULT_TOKEN=$(vault write -field=token \
       {{ .Values.recovery.fallback.k8sAuthPath }}/login \
       role={{ .Values.recovery.fallback.vaultRole }} \
       jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
 
     if [ -z "$VAULT_TOKEN" ]; then
-      echo "Failed to obtain fallback Vault token, postStart will try local KV"
+      echo "Failed to obtain fallback Vault token"
       exit 0
     fi
-    export VAULT_TOKEN
 
+    # Write token and connection info to Memory emptyDir.
+    # The main container (postStart) will use these to fetch unseal keys directly.
+    # Unseal keys never touch this directory.
+    echo "$VAULT_TOKEN"   > ${PREP_DIR}/vault-token
+    echo "$FALLBACK_API"  > ${PREP_DIR}/fallback-addr
+    echo "{{ include "vrf.fallbackSecretPath" . }}" > ${PREP_DIR}/secret-path
     {{- if .Values.recovery.encryption.enabled }}
-    vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
-      | openssl base64 -d \
-      | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/vault/recovery-passphrase/passphrase \
-      | grep -v '^$' > ${PREP_DIR}/unseal-keys 2>/dev/null
-    {{- else }}
-    vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
-      | grep -v '^$' > ${PREP_DIR}/unseal-keys 2>/dev/null
+    echo "true"           > ${PREP_DIR}/encrypted
     {{- end }}
 
     unset VAULT_TOKEN VAULT_SKIP_VERIFY
-
-    KEY_COUNT=$(grep -c . ${PREP_DIR}/unseal-keys 2>/dev/null || echo 0)
-    if [ "$KEY_COUNT" -gt 0 ]; then
-      echo "Recovery material prepared: ${KEY_COUNT} key(s)"
-    else
-      echo "No recovery material retrieved, postStart will try local KV"
-      rm -f ${PREP_DIR}/unseal-keys
-    fi
+    echo "Recovery token prepared in ${PREP_DIR} (single-use, TTL-limited)"
     {{- else }}
     echo "No recovery.fallback.addr configured; skipping recovery-prep"
     exit 0

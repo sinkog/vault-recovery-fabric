@@ -72,14 +72,33 @@ vault:
     - sh
     - -c
     - |
-      if [ -s /vault/recovery-prep/unseal-keys ]; then
-        echo "Using recovery material prepared by initContainer"
-        while IFS= read -r key; do
+      if [ -s /vault/recovery-prep/vault-token ]; then
+        echo "Recovery token available — fetching unseal keys from fallback Vault"
+        FALLBACK_ADDR=$(cat /vault/recovery-prep/fallback-addr)
+        SECRET_PATH=$(cat /vault/recovery-prep/secret-path)
+        export VAULT_ADDR=$FALLBACK_ADDR
+        export VAULT_TOKEN=$(cat /vault/recovery-prep/vault-token)
+        rm -f /vault/recovery-prep/vault-token \
+              /vault/recovery-prep/fallback-addr \
+              /vault/recovery-prep/secret-path
+
+        if [ -f /vault/recovery-prep/encrypted ]; then
+          UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" \
+            | openssl base64 -d \
+            | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/vault/recovery-passphrase/passphrase \
+            | grep -v '^$')
+          rm -f /vault/recovery-prep/encrypted
+        else
+          UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" | grep -v '^$')
+        fi
+
+        unset VAULT_TOKEN VAULT_ADDR
+        echo "$UNSEAL_KEYS" | while IFS= read -r key; do
           printf '{"key":"%s"}' "$key" | \
             curl -sf --request PUT --data @- \
               http://localhost:8200/v1/sys/unseal > /dev/null
-        done < /vault/recovery-prep/unseal-keys
-        rm -f /vault/recovery-prep/unseal-keys
+        done
+        unset UNSEAL_KEYS
       elif [[ "$HOSTNAME" != "vault-0" ]] || nc -z vault-active 8200; then
         while ! nc -z vault-active 8200; do sleep 1; done
         export VAULT_ADDR=http://vault-active:8200

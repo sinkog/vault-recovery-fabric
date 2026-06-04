@@ -69,39 +69,48 @@ spec:
 
           rm -f /recovery/vault-token
 
-          TARGET_API=http://vault-active:8200
+          TARGETS="{{ join " " .Values.recovery.targets }}"
+          UNSEALED_COUNT=0
 
-          # Wait for target Vault API to respond — sealed (503) is expected and OK
-          until curl -s -o /dev/null -w "%{http_code}" \
-              "${TARGET_API}/v1/sys/health" 2>/dev/null | \
-              grep -qE '^[2345][0-9][0-9]$'; do
-            sleep 2
+          for TARGET_API in $TARGETS; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${TARGET_API}/v1/sys/health" 2>/dev/null || echo "000")
+
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "429" ]; then
+              echo "${TARGET_API}: already unsealed (HTTP ${HTTP_CODE}), skipping"
+              UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
+              continue
+            fi
+
+            if [ "$HTTP_CODE" = "000" ]; then
+              echo "${TARGET_API}: unreachable, skipping"
+              continue
+            fi
+
+            echo "${TARGET_API}: sealed (HTTP ${HTTP_CODE}), sending unseal keys"
+            while IFS= read -r key; do
+              printf '{"key":"%s"}' "$key" | \
+                curl -sf --request PUT --data @- \
+                  "${TARGET_API}/v1/sys/unseal" > /dev/null
+            done < /recovery/unseal-keys
+
+            FINAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${TARGET_API}/v1/sys/health" 2>/dev/null || echo "000")
+            if [ "$FINAL_CODE" = "200" ] || [ "$FINAL_CODE" = "429" ]; then
+              echo "${TARGET_API}: recovery complete (HTTP ${FINAL_CODE})"
+              UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
+            else
+              echo "${TARGET_API}: recovery failed (HTTP ${FINAL_CODE})"
+            fi
           done
 
-          # 200/429 = already unsealed; 503 = sealed (proceed)
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${TARGET_API}/v1/sys/health" 2>/dev/null || echo "000")
-          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "429" ]; then
-            echo "Vault already unsealed (HTTP $HTTP_CODE)"
-            rm -f /recovery/unseal-keys
-            exit 0
-          fi
-
-          while IFS= read -r key; do
-            printf '{"key":"%s"}' "$key" | \
-              curl -sf --request PUT --data @- \
-                "${TARGET_API}/v1/sys/unseal" > /dev/null
-          done < /recovery/unseal-keys
           rm -f /recovery/unseal-keys
 
-          FINAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${TARGET_API}/v1/sys/health" 2>/dev/null || echo "000")
-          if [ "$FINAL_CODE" = "200" ] || [ "$FINAL_CODE" = "429" ]; then
-            echo "Recovery complete — Vault unsealed (HTTP $FINAL_CODE)"
-          else
-            echo "Recovery failed — Vault still sealed or unreachable (HTTP $FINAL_CODE)"
+          if [ "$UNSEALED_COUNT" -eq 0 ]; then
+            echo "Recovery failed — no targets successfully unsealed"
             exit 1
           fi
+          echo "Recovery complete — ${UNSEALED_COUNT} target(s) unsealed"
         volumeMounts:
         - name: recovery-data
           mountPath: /recovery

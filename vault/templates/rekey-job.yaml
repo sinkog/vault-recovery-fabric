@@ -69,15 +69,14 @@ spec:
 
           NEW_KEYS=""
           while IFS= read -r key; do
-            vault operator rekey -format=json \
-              -nonce="$NONCE" "$key" > /tmp/rekey-out.json 2>/dev/null || true
-            if grep -q '"complete": *true' /tmp/rekey-out.json 2>/dev/null; then
-              NEW_KEYS=$(grep -oE '"[0-9a-f]{40,}"' /tmp/rekey-out.json | tr -d '"')
+            OUTPUT=$(vault operator rekey -nonce="$NONCE" "$key" 2>/dev/null || true)
+            if echo "$OUTPUT" | grep -q "^Key 1:"; then
+              NEW_KEYS=$(echo "$OUTPUT" | grep "^Key [0-9]*:" | awk '{print $3}')
               break
             fi
           done < /tmp/current-keys.txt
 
-          rm -f /tmp/current-keys.txt /tmp/rekey-out.json
+          rm -f /tmp/current-keys.txt
 
           if [ -z "$NEW_KEYS" ]; then
             echo "Rekey failed: insufficient key shares or parse error"
@@ -96,7 +95,7 @@ spec:
           vault kv put secret/vault/unseal-keys contents="$STORE_VALUE"
           echo "Local KV updated with new keys"
 
-          {{- if .Values.recovery.triggerId }}
+          {{- if .Values.recovery.rekey.syncFallback }}
           {{- if .Values.recovery.fallback.tlsSkipVerify }}
           export VAULT_SKIP_VERIFY=true
           {{- end }}
@@ -105,7 +104,6 @@ spec:
             {{ .Values.recovery.fallback.k8sAuthPath }}/login \
             role={{ .Values.recovery.fallback.vaultRole }} \
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
-          export VAULT_ADDR={{ .Values.recovery.fallback.addr }}
           VAULT_TOKEN="$FALLBACK_TOKEN" vault kv put \
             {{ .Values.recovery.fallback.secretPath }} contents="$STORE_VALUE"
           unset VAULT_SKIP_VERIFY

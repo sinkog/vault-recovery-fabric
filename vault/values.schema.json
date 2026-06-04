@@ -27,6 +27,10 @@
       "properties": {
         "triggerId": { "type": "string" },
         "selfName":  { "type": "string" },
+        "targets": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
         "fallback": {
           "type": "object",
           "properties": {
@@ -44,6 +48,7 @@
             "enabled":      { "type": "boolean" },
             "experimental": { "type": "boolean" },
             "confirm":      { "type": "boolean" },
+            "syncFallback": { "type": "boolean" },
             "keyShares":    { "type": "integer", "minimum": 1 },
             "keyThreshold": { "type": "integer", "minimum": 1 }
           }

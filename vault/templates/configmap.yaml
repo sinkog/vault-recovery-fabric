@@ -1,3 +1,6 @@
+{{- if ne .Release.Name "vault" }}
+{{- fail (printf "vault-recovery-fabric requires Helm release name 'vault' (got: '%s'). Service names vault-active and vault-0.vault-internal are hardcoded for release name 'vault'." .Release.Name) }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

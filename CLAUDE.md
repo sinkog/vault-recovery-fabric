@@ -23,14 +23,15 @@ Fejlesztési irányok és hardening lista: `ai/ROADMAP.md`
 
 ## Jelenlegi állapot vs. cél
 
-| Dimenzió | Jelenlegi | Cél |
-|---|---|---|
-| Scope | single cluster | multi-cluster recovery mesh |
-| Storage backend | Integrated Raft (Consul eltávolítva) | Integrated Raft |
-| Auth | ephemeral K8s SA JWT (vault/vault eltávolítva) | ephemeral K8s SA JWT, rövid TTL |
-| Recovery job | nem idempotens | two-phase (initContainer + main) |
-| Credential tárolás | root token KV-ban marad | recovery material célcluster identity-hez kötve |
-| Namespace | hardkódolt | paraméterezett |
+| Dimenzió | Állapot |
+|---|---|
+| Scope | multi-cluster recovery mesh (implementált) |
+| Storage backend | Integrated Raft |
+| Auth | K8s SA JWT → rövid TTL token (vault/vault eltávolítva) |
+| Recovery job | two-phase initContainer + main, per-pod targets |
+| Root token | nem persistálódik, tmp fájlok törlődnek |
+| Reviewer token | dedicated vault-reviewer SA + long-lived Secret (K8s 1.24+ safe) |
+| Release name | kötelezően `vault` (release name guard a configmap.yaml-ban) |
 
 ---
 

@@ -9,6 +9,7 @@ recovery:
   rekey:
     enabled: false
     confirm: false
+    syncFallback: false
     experimental: true
     keyShares: 1
     keyThreshold: 1

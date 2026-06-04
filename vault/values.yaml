@@ -12,6 +12,10 @@ bootstrap:
 recovery:
   triggerId: ""
   selfName: ""
+  targets:
+    - http://vault-0.vault-internal:8200
+    - http://vault-1.vault-internal:8200
+    - http://vault-2.vault-internal:8200
   fallback:
     addr: ""
     k8sAuthPath: "auth/kubernetes"
@@ -23,6 +27,7 @@ recovery:
     enabled: false
     confirm: false
     experimental: true
+    syncFallback: false
     keyShares: 5
     keyThreshold: 3
   encryption:

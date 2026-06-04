@@ -54,25 +54,20 @@ blokk adja, Consul semmilyen szerepet nem tölt be.
 
 ### 1. fázis — Init job (első telepítésnél)
 
-`vault/templates/job.yaml` (`vault-wait-job`):
+`vault/templates/job.yaml` (`vault-wait-job`, Helm post-install hook):
 
 ```
-vault-0 elérhető → vault operator init → unseal keys + root token
-→ vault-0 unseal
-→ KV v2 engine enable
-→ Kubernetes auth enable + config
-→ vault-unseal userpass auth enable
-→ vault-unseal policy (configmap-ból)
-→ unseal keys → secret/vault/unseal-keys
-→ root token → secret/vault/init-token
-→ tail -f /dev/null  ← root token kézi kiolvashatósághoz (HARDENING SZÜKSÉGES)
+HTTP health check → 501 = not initialized → vault operator init
+→ vault-0 unseal (curl /v1/sys/unseal)
+→ secret/ KV v2 mount enable (idempotens)
+→ Kubernetes auth enable + config (vault-reviewer-token használva)
+→ policy write (vault-unseal, vault-rekey)
+→ K8s auth role write (vault-unseal, vault-recovery-unseal, vault-rekey)
+→ optional: secret/vault/unseal-keys (csak ha bootstrap.storeUnsealKeys=true)
+→ tmp fájlok törlése (/tmp/keys.txt, /tmp/vault-unseal.txt, /tmp/vault-token.txt)
 ```
 
-**Jelenlegi problémák:**
-- nem idempotens (`vault operator init` hibázik ha már init)
-- hardkódolt volume név (`kube-api-access-spl6s` — live cluster exportból maradt)
-- root token tartósan a KV-ban marad (hardening lista: törlendő)
-- `tail -f /dev/null` a végén: szándékos debugolhatóság, de production-ban nem kívánatos
+**Jelenlegi állapot:** idempotens, root token nem persistálódik, reviewer token long-lived SA Secret-ből jön
 
 ### 2. fázis — Auto-unseal (postStart, minden újrainduláskor)
 
@@ -90,18 +85,21 @@ Egyébként:
 
 ---
 
-## Tervezett recovery Job modell (two-phase)
+## Recovery Job modell (implementált, two-phase)
 
 ```
-Recovery Job Pod
+Recovery Job Pod (triggerId-alapú név, Helm post-upgrade hook)
   → initContainer:
-       K8s ServiceAccount JWT
-       login fallback Vaultba (Kubernetes auth)
-       rövid TTL token (token_num_uses=1 vagy 2)
-       bootstrap config → memory emptyDir
+       fallback Vault HTTP health check
+       K8s SA JWT → auth/kubernetes/login role=vault-recovery-unseal
+       rövid TTL token (5m, num_uses=2) → memory emptyDir
 
   → main container:
-       target Vault health/seal check (várakozás)
+       recovery material fetch fallback Vaultból
+       per-pod unseal: recovery.targets listán végigmegy
+         (vault-0..N.vault-internal:8200, nem vault-active!)
+         sealed (503) → unseal; unsealed (200/429) → skip; unreachable → log
+       végső proof: legalább 1 target unsealed, különben exit 1
        fallback Vaultból recovery material lekérés
        target Vault sys/unseal
        ephemeral token/config törlése

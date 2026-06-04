@@ -9,36 +9,31 @@
 - **Alapelv:** recovery-plane separation — a recovery komponens sosem függ azon a Vaulton, amit helyre akar állítani
 - **Mérce:** `helm template` hiba nélkül fut, `helm lint` zöld
 
-## Jelenlegi állapot: single-cluster baseline
+## Jelenlegi állapot (alpha)
 
-A repo jelenleg egy single-cluster Vault HA deployment. Ez az M1–M2 mérföldkő szintje.
-A multi-cluster recovery mesh (M4) még nincs implementálva.
+Multi-cluster recovery mesh implementálva (M4). Helm release neve kötelezően `vault`.
 
 ### Komponens állapot
 
 | Komponens | Állapot | Megjegyzés |
 |---|---|---|
-| `vault/templates/configmap.yaml` | ✓ működő | vault-unseal policy HCL |
-| `vault/values.yaml` postStart | ✓ működő | auto-unseal logika, vault-0 alapú |
-| `vault/templates/serviceaccount.yaml` | ✓ működő | |
-| `vault/templates/serviceaccount-secret.yaml` | ✓ működő | K8s 1.24+ compat |
-| `vault/templates/job.yaml` | ⚠ részleges | nem idempotens, hardkódolt volume, root token logban |
-| `vault/templates/rbac.yaml` | ✗ hibás | duplikált ClusterRoleBinding név — P0 |
-| `apps/templates/appproject.yaml` | ✗ hibás | hiányzó apiVersion + .Values. prefix — P0 |
-| `apps/templates/vault.yaml` | ✗ hibás | hiányzó .Values. prefix — P0 |
+| `vault/templates/configmap.yaml` | ✓ | vault-unseal + vault-rekey policy, release name guard |
+| `vault/templates/job.yaml` | ✓ | idempotens (HTTP 501 check), reviewer token, policy-before-role |
+| `vault/templates/rbac.yaml` | ✓ | Release.Name alapú nevek, 4 binding (vault/auth/recovery/reviewer) |
+| `vault/templates/recovery-job.yaml` | ✓ | two-phase, per-pod targets, unseal proof |
+| `vault/templates/rekey-job.yaml` | ⚠ alpha | triple gate, külön role, syncFallback flag; nem atomi |
+| `vault/templates/networkpolicy.yaml` | ✓ | from selectors, CIDR guard recovery esetén |
+| `vault/templates/tests/` | ✓ | health, recovery-auth, mesh-auth tesztek |
+| `apps/templates/` | ✓ | ArgoCD Application + AppProject |
 
-## Javítási prioritások
+## Nyitott kérdések (ismert adósság)
 
-| Prioritás | Feladat | Mérföldkő |
-|---|---|---|
-| P0 — deploy blocker | rbac duplikált név | M1.1 |
-| P0 — ArgoCD blocker | appproject.yaml apiVersion | M1.2 |
-| P0 — helm render | .Values. prefix hiánya | M1.3 |
-| P1 — portability | hardkódolt volume a job-ban | M2.1 |
-| P1 — robusztusság | idempotens init | M2.2 |
-| P1 — paraméterezhető | namespace hardkódolás | M2.3 |
-| P2 — hardening | vault/vault credential eltávolítása | M3.1 |
-| P2 — hardening | root token lifecycle | M3.2 |
+| Kérdés | Státusz |
+|---|---|
+| Rekey tranzakcionalitás | Nyitott — local/fallback write nem atomi |
+| AES-CBC → AEAD (GCM/age) | Roadmap |
+| Cross-cluster K8s auth külön mountok | Roadmap |
+| bootstrap.autoInit=false production default | Nyitott |
 
 ## Ami kész és ne írj felül
 

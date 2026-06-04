@@ -1,3 +1,4 @@
+{{- if .Values.bootstrap.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -94,3 +95,5 @@ spec:
         configMap:
           name: vault-postconfig
   backoffLimit: 4
+
+{{- end }}

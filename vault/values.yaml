@@ -10,7 +10,8 @@ networkPolicy:
   allowClientPodLabels: {}
 
 bootstrap:
-  storeUnsealKeys: false
+  enabled: true
+  storeUnsealKeys: true
   keyShares: 5
   keyThreshold: 3
 

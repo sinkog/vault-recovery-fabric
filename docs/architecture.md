@@ -77,9 +77,9 @@ vault/
 
 ## NetworkPolicy notes
 
-When `recovery.triggerId` is set and `recovery.fallback.cidr` is empty, egress allows
-port 8200/443 broadly. **Set `recovery.fallback.cidr` in production** to restrict egress
-to the known fallback Vault CIDR range.
+When `recovery.triggerId` is set and `networkPolicy.enabled=true`, `recovery.fallback.cidr`
+is **required** — the chart fails rendering without it. Set it to the CIDR of the fallback
+Vault cluster to restrict egress to that range only.
 
 ## Key invariants
 

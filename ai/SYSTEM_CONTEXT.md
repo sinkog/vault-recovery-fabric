@@ -112,15 +112,22 @@ Recovery Job Pod (triggerId-alapú név, Helm post-upgrade hook)
 
 ### Fallback Vault kompromittálása
 
-Ha Vault-B kompromittálódik, önmagában **nem elegendő** Vault-A feloldásához.
-A recovery material Vault-A cluster recovery identity-hez (public key) kötött:
+**Jelenlegi implementáció (passphrase-alapú, encryption.enabled=true esetén):**
+
+Ha Vault-B kompromittálódik, önmagában nem elég Vault-A feloldásához — de csak akkor,
+ha a recovery passphrase egy külön compromise domainben van tárolva.
 
 ```
-Vault-B-ben: A recovery material = A-cluster public keyvel védve
-Az attacker kell:
-  1. Vault-B kompromittálása (tárolt anyag elérése)
-  2. Vault-A cluster recovery identity (private key)
+Attacker kell:
+  1. Vault-B kompromittálása (titkosított blob elérése)
+  2. Vault-A cluster K8s Secretje (vault-recovery-passphrase)
 ```
+
+**Célarchitektúra (roadmap, még nem implementált):**
+
+Per-cluster public-key alapú védelem, ahol a fallback Vault csak a cél cluster
+public key-ével titkosított anyagot tárolja. Ehhez age / SOPS / Vault Transit envelope
+encryption szükséges — a jelenlegi AES-256-CBC passphrase modell ezt nem nyújtja.
 
 ### Credential lifecycle
 

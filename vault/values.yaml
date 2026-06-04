@@ -52,9 +52,6 @@ vault:
             mountPath: /vault/recovery-prep
           - name: recovery-init-script
             mountPath: /vault/scripts
-          - name: vault-recovery-token
-            mountPath: /vault/recovery-sa-token
-            readOnly: true
     volumes:
       - name: recovery-prep
         emptyDir:
@@ -63,9 +60,6 @@ vault:
         configMap:
           name: vault-recovery-init-script
           defaultMode: 0755
-      - name: vault-recovery-token
-        secret:
-          secretName: vault-recovery-token
     volumeMounts:
       - name: recovery-prep
         mountPath: /vault/recovery-prep
@@ -78,7 +72,15 @@ vault:
     - sh
     - -c
     - |
-      if [[ "$HOSTNAME" != "vault-0" ]] || nc -z vault-active 8200; then
+      if [ -s /vault/recovery-prep/unseal-keys ]; then
+        echo "Using recovery material prepared by initContainer"
+        while IFS= read -r key; do
+          printf '{"key":"%s"}' "$key" | \
+            curl -sf --request PUT --data @- \
+              http://localhost:8200/v1/sys/unseal > /dev/null
+        done < /vault/recovery-prep/unseal-keys
+        rm -f /vault/recovery-prep/unseal-keys
+      elif [[ "$HOSTNAME" != "vault-0" ]] || nc -z vault-active 8200; then
         while ! nc -z vault-active 8200; do sleep 1; done
         export VAULT_ADDR=http://vault-active:8200
         until curl -sf -o /dev/null -w "%{http_code}" \
@@ -91,24 +93,14 @@ vault:
             role=vault-unseal \
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"); do sleep 4; done
         export VAULT_TOKEN
-        if [ -s /vault/recovery-prep/unseal-keys ]; then
-          echo "Using recovery material prepared by initContainer"
-          while IFS= read -r key; do
+        UNSEAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys 2>/dev/null || true)
+        if [ -n "$UNSEAL_KEYS" ]; then
+          echo "$UNSEAL_KEYS" | grep -v '^$' | while IFS= read -r key; do
             printf '{"key":"%s"}' "$key" | \
               curl -sf --request PUT --data @- \
                 http://localhost:8200/v1/sys/unseal > /dev/null
-          done < /vault/recovery-prep/unseal-keys
-          rm -f /vault/recovery-prep/unseal-keys
+          done
         else
-          UNSEAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys 2>/dev/null || true)
-          if [ -n "$UNSEAL_KEYS" ]; then
-            echo "$UNSEAL_KEYS" | grep -v '^$' | while IFS= read -r key; do
-              printf '{"key":"%s"}' "$key" | \
-                curl -sf --request PUT --data @- \
-                  http://localhost:8200/v1/sys/unseal > /dev/null
-            done
-          else
-            echo "No local unseal keys found — manual or mesh recovery required"
-          fi
+          echo "No local unseal keys found — manual or mesh recovery required"
         fi
       fi

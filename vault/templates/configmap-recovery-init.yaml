@@ -1,4 +1,3 @@
-{{- if .Values.recovery.fallback.addr }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,11 +5,12 @@ metadata:
 data:
   recovery-init.sh: |
     #!/bin/sh
-    # Recovery material preparation — runs in initContainer before vault starts.
-    # If vault-active is reachable (other pods already unsealed): let postStart
-    # handle unseal via local KV. If not, fetch material from fallback Vault
-    # and write to /vault/recovery-prep/ (Memory emptyDir) for postStart use.
+    # Recovery material preparation initContainer.
+    # Runs before vault server starts; fetches unseal keys from fallback Vault
+    # if vault-active is not reachable, and writes them to Memory emptyDir
+    # for postStart to use.
 
+    {{- if .Values.recovery.fallback.addr }}
     PREP_DIR=/vault/recovery-prep
     FALLBACK_API={{ .Values.recovery.fallback.addr }}
 
@@ -37,17 +37,13 @@ data:
     {{- end }}
     export VAULT_ADDR=$FALLBACK_API
 
-    # Use vault-recovery SA token (not pod's vault SA token) for fallback auth.
-    # This token is mounted at a separate path — the main vault container has
-    # no reason to read it and it carries only recovery-plane credentials.
-    RECOVERY_JWT=$(cat /vault/recovery-sa-token/token 2>/dev/null || \
-                   cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-
+    # Use pod's SA token for fallback Vault K8s auth.
+    # The vault SA is authorized for the fallback vault-recovery-unseal role
+    # (configure this role on the fallback Vault to accept both vault and vault-recovery SA).
     VAULT_TOKEN=$(vault write -field=token \
       {{ .Values.recovery.fallback.k8sAuthPath }}/login \
       role={{ .Values.recovery.fallback.vaultRole }} \
-      jwt="$RECOVERY_JWT" 2>/dev/null)
-    unset RECOVERY_JWT
+      jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
 
     if [ -z "$VAULT_TOKEN" ]; then
       echo "Failed to obtain fallback Vault token, postStart will try local KV"
@@ -65,11 +61,16 @@ data:
       | grep -v '^$' > ${PREP_DIR}/unseal-keys 2>/dev/null
     {{- end }}
 
+    unset VAULT_TOKEN VAULT_SKIP_VERIFY
+
     KEY_COUNT=$(grep -c . ${PREP_DIR}/unseal-keys 2>/dev/null || echo 0)
     if [ "$KEY_COUNT" -gt 0 ]; then
-      echo "Recovery material prepared: ${KEY_COUNT} key(s) in ${PREP_DIR}"
+      echo "Recovery material prepared: ${KEY_COUNT} key(s)"
     else
       echo "No recovery material retrieved, postStart will try local KV"
       rm -f ${PREP_DIR}/unseal-keys
     fi
-{{- end }}
+    {{- else }}
+    echo "No recovery.fallback.addr configured; skipping recovery-prep"
+    exit 0
+    {{- end }}

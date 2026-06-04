@@ -132,8 +132,12 @@ Each recovery is an explicit event identified by a unique `triggerId`:
 ```bash
 helm upgrade vault ./vault -n kube-vault \
   --set recovery.triggerId=$(date +%Y%m%d%H%M%S) \
-  --set recovery.fallback.addr=https://vault-b.example.com:8200
+  --set recovery.fallback.addr=https://vault-b.example.com:8200 \
+  --set recovery.fallback.cidr=10.10.20.0/24
 ```
+
+> `recovery.fallback.cidr` is required when `networkPolicy.enabled=true` (default).
+> Set it to the CIDR of your fallback Vault cluster.
 
 After recovery completes, reset:
 

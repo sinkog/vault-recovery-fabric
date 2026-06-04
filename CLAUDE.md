@@ -66,5 +66,5 @@ delete.sh    helm uninstall + PVC cleanup
 Olvasd el: `context.md`, `ai/SYSTEM_CONTEXT.md`, `ai/LLM_RULES.md`
 
 ```bash
-helm template vault-recovery-fabric ./vault -n kube-vault
+helm template vault ./vault -n kube-vault
 ```

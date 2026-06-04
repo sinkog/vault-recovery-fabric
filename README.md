@@ -44,6 +44,9 @@ See `docs/threat-model.md` for security analysis.
 - Kubernetes 1.24+
 - Helm 3.x
 - HashiCorp Vault Helm chart (bundled as dependency)
+- **Helm release name must be `vault`** — the Vault subchart generates service names
+  (`vault-active`, `vault-0.vault-internal`) from the release name. The recovery scripts
+  depend on these names. Other release names are not supported in this version.
 
 ## Quick Start — Single Cluster
 

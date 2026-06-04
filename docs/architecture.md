@@ -58,13 +58,21 @@ vault/
 
   vault-recovery-unseal (K8s auth role)
     Bound to: vault-recovery SA
-    Policy: read secret/vault/unseal-keys
+    Policy vault-unseal: read secret/data/vault/unseal-keys (KV v2 API path)
     TTL: 5m, token_num_uses: 2
 
+  vault-rekey (K8s auth role)
+    Bound to: vault-recovery SA
+    Policy vault-rekey: read+write secret/data/vault/unseal-keys + sys/rekey/*
+    TTL: 10m, token_num_uses: 3
+
   vault-unseal (K8s auth role)
-    Bound to: vault SA
-    Policy: read secret/vault/unseal-keys
+    Bound to: vault SA (postStart)
+    Policy vault-unseal: read secret/data/vault/unseal-keys (KV v2 API path)
     TTL: 1h
+
+  Note: KV v2 CLI path (secret/vault/...) differs from policy path (secret/data/vault/...)
+  The Vault CLI handles this transparently; policies must use the API path.
 ```
 
 ## NetworkPolicy notes

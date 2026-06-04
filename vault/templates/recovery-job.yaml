@@ -93,7 +93,15 @@ spec:
                 "${TARGET_API}/v1/sys/unseal" > /dev/null
           done < /recovery/unseal-keys
           rm -f /recovery/unseal-keys
-          echo "Recovery complete"
+
+          FINAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${TARGET_API}/v1/sys/health" 2>/dev/null || echo "000")
+          if [ "$FINAL_CODE" = "200" ] || [ "$FINAL_CODE" = "429" ]; then
+            echo "Recovery complete — Vault unsealed (HTTP $FINAL_CODE)"
+          else
+            echo "Recovery failed — Vault still sealed or unreachable (HTTP $FINAL_CODE)"
+            exit 1
+          fi
         volumeMounts:
         - name: recovery-data
           mountPath: /recovery

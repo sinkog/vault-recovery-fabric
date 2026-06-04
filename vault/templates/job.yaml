@@ -82,6 +82,7 @@ spec:
           ls /mnt/config/* | xargs basename | sed 's/\..*$//' | while read -r line; do
             vault policy write $line /mnt/config/$line.hcl
           done
+          rm -f /tmp/keys.txt /tmp/vault-unseal.txt /tmp/vault-token.txt
         volumeMounts:
         - name: config-volume
           mountPath: /mnt/config

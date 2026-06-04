@@ -19,8 +19,14 @@ data:
 
     2. Create a policy on the fallback Vault for this cluster's recovery material:
 
+       NOTE: KV v2 policy path requires secret/data/<path> prefix (not secret/<path>).
+       The CLI uses secret/<path>, but policies must reference the API path.
+
        vault policy write {{ .Values.recovery.selfName }}-recovery - <<EOF
-       path "{{ .Values.recovery.fallback.secretPath }}" {
+       path "secret/data/{{ trimPrefix "secret/" .Values.recovery.fallback.secretPath }}" {
+         capabilities = ["read"]
+       }
+       path "secret/metadata/{{ trimPrefix "secret/" .Values.recovery.fallback.secretPath }}" {
          capabilities = ["read"]
        }
        EOF

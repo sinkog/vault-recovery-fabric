@@ -7,40 +7,41 @@ amit éppen helyre akar állítani.** Ha egy változtatás ezt megsérti, az vis
 
 ## Architektúra invariánsok — ne változtasd meg
 
-- `secret/vault/unseal-keys` KV path és `contents` mező neve más komponensek hivatkozzák
-- `vault-unseal` userpass auth path és policy neve az unseal flow-ban rögzített
-- `vault-0` hostname-alapú feltétel a postStart-ban: ő az egyetlen initiator, a többi raft join-ol
+- KV v2 policy path: `secret/data/vault/unseal-keys` (nem `secret/vault/...`) — ez a Vault API path
+- KV CLI path: `vault kv get secret/vault/unseal-keys` — a CLI elfedi a v2 prefix-et
+- `vault-0` hostname-alapú feltétel a postStart-ban: ő az egyetlen initiator
 - A két sík szétválasztása (normal secret-plane vs. recovery-plane) minden új funkciónál betartandó
+- **Helm release neve kötelezően `vault`** — a subchart service nevei ebből képződnek
 
-## Credential kezelés
+## Jelenlegi auth modell (nem stale)
 
-- A `vault/vault` hardkódolt bootstrap credential egy ismert adósság — ne vezess be új hardkódolt credentialt
-- Ha új auth-t adsz hozzá, az K8s ServiceAccount JWT alapú legyen, nem jelszó alapú
-- Root token: soha ne logolj, production module esetén törlendő a KV-ból a bootstrap után
-- `ttlSecondsAfterFinished` és `backoffLimit` minden Job-on kötelező
+- `vault/vault` userpass: **eltávolítva** M3-ban — ne hozd vissza
+- Minden auth K8s SA JWT alapú: `vault write auth/kubernetes/login role=<role>`
+- Roleok: `vault-unseal` (read, postStart), `vault-recovery-unseal` (read, 5m TTL), `vault-rekey` (read+write+sys/rekey, 10m TTL)
+- Root token: nem persistálódik KV-ban, tmp fájlok törlődnek init végén
+
+## KV v2 szabályok
+
+- Policy: mindig `secret/data/...` és `secret/metadata/...`
+- CLI: `vault kv get secret/...` (a CLI automatikusan kezeli a v2 prefix-et)
+- Schema valide policy írásakor a configmap.yaml-t nézd, ne a CLI path-ot
 
 ## Helm szabályok
 
-- Minden template változtatás után: `helm template <name> ./<chart> -n kube-vault`
+- Release name: **`vault`** — más release névvel a health check és recovery service nevek eltörnek
+- Minden template változtatás után: `helm template vault ./vault -n kube-vault`
 - `helm lint` hibát ne hagyj bent
-- Upstream chart dependency-t (`.tgz`) ne csomagold ki — a `charts/` tgz maradjon
-- Új values mező → default a `values.yaml`-ban kötelező; ha `values.schema.json` már létezik, ott is
-
-## Kubernetes szabályok
-
-- ClusterRoleBinding nevek egyediek kell legyenek a clusterben
-- ServiceAccount token secret K8s 1.24+ alatt nem jön létre automatikusan — explicit secret kell
-- NetworkPolicy változtatásnál a recovery-plane → fallback Vault kommunikáció ne kerüljön tiltásra
+- Upstream chart dependency-t (`.tgz`) ne csomagold ki
 
 ## Biztonsági szabályok
 
-- Unseal key-ek és root token soha ne jelenjenek meg logban (`set -x` a job scriptben kockázatos)
-- Recovery material tárolásánál a célcluster identity-kötés elve betartandó (context.md 7. fejezet)
-- `tail -f /dev/null` csak lab módban elfogadható
+- Unseal key-ek és root token: ne jelenjenek meg logban, tmp fájlok törlendők
+- Recovery job végén: HTTP health check bizonyítja az unseal sikerét (ne csak "lefutott a parancs")
+- `curl -f` tilos HTTP code lekérésnél — `curl -s -o /dev/null -w "%{http_code}"` a helyes minta
 
 ## Változtatás előtt
 
-1. Olvasd el: `context.md` (víziós háttér), `ai/SYSTEM_CONTEXT.md` (kétfázisú architektúra)
-2. Azonosítsd az érintett réteget: init job / postStart / ArgoCD / recovery mesh — különböző életciklus
-3. Futtasd: `helm template`
+1. Olvasd el: `context.md`, `ai/SYSTEM_CONTEXT.md`
+2. KV v2 policy path-nál ellenőrizd a configmap.yaml-t
+3. Futtasd: `helm template vault ./vault -n kube-vault`
 4. Recovery-plane separation: a változtatás megtöri-e az elvet?

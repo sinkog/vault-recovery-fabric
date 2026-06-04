@@ -1,0 +1,29 @@
+vault-recovery-fabric deployed to namespace {{ .Release.Namespace }}.
+
+IMPORTANT: This chart requires the Helm release name to be "vault".
+The HashiCorp Vault subchart generates service names from the release name:
+  vault-active             (active node service)
+  vault-0.vault-internal   (headless internal service)
+
+These names are hardcoded in the init, recovery, and rekey job scripts.
+Using a different release name will break the recovery flow.
+
+  Supported: helm upgrade -i vault ./vault -n {{ .Release.Namespace }}
+  Not supported: helm upgrade -i vault-recovery-fabric ./vault -n {{ .Release.Namespace }}
+
+{{- if .Values.recovery.triggerId }}
+
+Recovery job triggered: vault-recovery-{{ .Values.recovery.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }}
+Monitor: kubectl logs -n {{ .Release.Namespace }} job/vault-recovery-{{ .Values.recovery.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }} -f
+Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --set recovery.triggerId=""
+{{- end }}
+
+{{- if and .Values.recovery.rekey.enabled .Values.recovery.rekey.confirm }}
+
+Rekey job triggered: vault-rekey-job
+Monitor: kubectl logs -n {{ .Release.Namespace }} job/vault-rekey-job -f
+Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --set recovery.rekey.enabled=false --set recovery.rekey.confirm=false
+{{- end }}
+
+Drill procedures: kubectl get configmap vault-recovery-drill -n {{ .Release.Namespace }} -o jsonpath='{.data}'
+Mesh setup:      kubectl get configmap vault-mesh-setup -n {{ .Release.Namespace }} -o jsonpath='{.data.README}' 2>/dev/null || echo "Set recovery.selfName to enable mesh setup guide"

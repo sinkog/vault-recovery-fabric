@@ -33,7 +33,8 @@ data:
     VAULT_TOKEN=""
     ACTIVE_FALLBACK=""
 
-    for CANDIDATE in "$FALLBACK_API" {{ join " " .Values.recovery.targets }}; do
+    # Priority: local vault service → local pod addresses → external fallback
+    for CANDIDATE in "http://vault:8200" {{ join " " .Values.recovery.targets }} "$FALLBACK_API"; do
       CAND_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
         "${CANDIDATE}/v1/sys/health" 2>/dev/null || echo "000")
       if echo "$CAND_CODE" | grep -qE '^(200|429)$'; then

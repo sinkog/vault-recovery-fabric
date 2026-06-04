@@ -6,64 +6,62 @@ data:
   recovery-init.sh: |
     #!/bin/sh
     # Recovery preparation initContainer.
-    # Fetches a short-lived, single-use token from the fallback Vault and
-    # writes it (plus connection metadata) to Memory emptyDir for postStart.
-    # The main container uses this token to fetch unseal keys directly from
-    # the fallback Vault — unseal keys never touch the emptyDir.
+    # Runs before the vault server starts. Gets a short-lived single-use
+    # token from whichever Vault is available (local vault-active first,
+    # then external fallback). PostStart uses this token — it never does
+    # K8s auth itself (cannot, as vault may be sealed at that point).
 
-    {{- if .Values.recovery.fallback.addr }}
     PREP_DIR=/vault/recovery-prep
-    FALLBACK_API={{ .Values.recovery.fallback.addr }}
+    VAULT_TOKEN=""
+    SOURCE_ADDR=""
+    SECRET_PATH=""
 
-    # If vault-active is already unsealed, no recovery needed
+    # 1. Try vault-active (local cluster, already unsealed)
     ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
       http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
 
     if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
-      echo "vault-active reachable and unsealed — no recovery prep needed"
-      exit 0
+      export VAULT_ADDR=http://vault-active:8200
+      VAULT_TOKEN=$(vault write -field=token \
+        auth/kubernetes/login \
+        role=vault-unseal \
+        jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+      SOURCE_ADDR="http://vault-active:8200"
+      SECRET_PATH="{{ include "vrf.localSecretPath" . }}"
     fi
 
-    # No unsealed active node — try any reachable Vault that can provide a token.
-    # Try the configured fallback Vault first, then any other target that responds.
-    {{- if .Values.recovery.fallback.tlsSkipVerify }}
-    export VAULT_SKIP_VERIFY=true
+    {{- if .Values.recovery.fallback.addr }}
+    # 2. vault-active not available — try external fallback
+    if [ -z "$VAULT_TOKEN" ]; then
+      FALLBACK_API={{ .Values.recovery.fallback.addr }}
+      {{- if .Values.recovery.fallback.tlsSkipVerify }}
+      export VAULT_SKIP_VERIFY=true
+      {{- end }}
+      FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        "${FALLBACK_API}/v1/sys/health" 2>/dev/null || echo "000")
+      if echo "$FB_CODE" | grep -qE '^(200|429)$'; then
+        export VAULT_ADDR=$FALLBACK_API
+        VAULT_TOKEN=$(vault write -field=token \
+          {{ .Values.recovery.fallback.k8sAuthPath }}/login \
+          role={{ .Values.recovery.fallback.vaultRole }} \
+          jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+        SOURCE_ADDR="$FALLBACK_API"
+        SECRET_PATH="{{ include "vrf.fallbackSecretPath" . }}"
+      fi
+    fi
     {{- end }}
 
-    # vault-active has no endpoints → all local pods are sealed.
-    # Only the external fallback Vault can provide a recovery token.
-    FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-      "${FALLBACK_API}/v1/sys/health" 2>/dev/null || echo "000")
-
-    if ! echo "$FB_CODE" | grep -qE '^(200|429)$'; then
-      echo "Fallback vault not reachable or not unsealed (HTTP ${FB_CODE})"
-      exit 0
-    fi
-
-    export VAULT_ADDR=$FALLBACK_API
-    VAULT_TOKEN=$(vault write -field=token \
-      {{ .Values.recovery.fallback.k8sAuthPath }}/login \
-      role={{ .Values.recovery.fallback.vaultRole }} \
-      jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
-
     if [ -z "$VAULT_TOKEN" ]; then
-      echo "Failed to obtain token from fallback vault"
+      echo "No reachable Vault found — postStart will try local KV directly"
       exit 0
     fi
 
-    # Write token and connection info to Memory emptyDir.
-    # The main container (postStart) will use these to fetch unseal keys directly.
-    # Unseal keys never touch this directory.
-    echo "$VAULT_TOKEN"   > ${PREP_DIR}/vault-token
-    echo "$FALLBACK_API"  > ${PREP_DIR}/fallback-addr
-    echo "{{ include "vrf.fallbackSecretPath" . }}" > ${PREP_DIR}/secret-path
+    echo "$VAULT_TOKEN"  > ${PREP_DIR}/vault-token
+    echo "$SOURCE_ADDR"  > ${PREP_DIR}/vault-addr
+    echo "$SECRET_PATH"  > ${PREP_DIR}/secret-path
     {{- if .Values.recovery.encryption.enabled }}
-    echo "true"           > ${PREP_DIR}/encrypted
+    echo "true"          > ${PREP_DIR}/encrypted
     {{- end }}
 
     unset VAULT_TOKEN VAULT_SKIP_VERIFY
-    echo "Recovery token prepared in ${PREP_DIR} (single-use, TTL-limited)"
-    {{- else }}
-    echo "No recovery.fallback.addr configured; skipping recovery-prep"
-    exit 0
-    {{- end }}
+    echo "Token prepared from ${SOURCE_ADDR} — postStart will use it for unseal"

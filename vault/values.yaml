@@ -73,13 +73,12 @@ vault:
     - -c
     - |
       if [ -s /vault/recovery-prep/vault-token ]; then
-        echo "Recovery token available — fetching unseal keys from fallback Vault"
-        FALLBACK_ADDR=$(cat /vault/recovery-prep/fallback-addr)
+        SOURCE_ADDR=$(cat /vault/recovery-prep/vault-addr)
         SECRET_PATH=$(cat /vault/recovery-prep/secret-path)
-        export VAULT_ADDR=$FALLBACK_ADDR
+        export VAULT_ADDR=$SOURCE_ADDR
         export VAULT_TOKEN=$(cat /vault/recovery-prep/vault-token)
         rm -f /vault/recovery-prep/vault-token \
-              /vault/recovery-prep/fallback-addr \
+              /vault/recovery-prep/vault-addr \
               /vault/recovery-prep/secret-path
 
         if [ -f /vault/recovery-prep/encrypted ]; then
@@ -91,35 +90,21 @@ vault:
         else
           UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" | grep -v '^$')
         fi
-
         unset VAULT_TOKEN VAULT_ADDR
-        echo "$UNSEAL_KEYS" | while IFS= read -r key; do
-          printf '{"key":"%s"}' "$key" | \
-            curl -sf --request PUT --data @- \
-              http://localhost:8200/v1/sys/unseal > /dev/null
-        done
-        unset UNSEAL_KEYS
-      elif [[ "$HOSTNAME" != "vault-0" ]] || nc -z vault-active 8200; then
-        while ! nc -z vault-active 8200; do sleep 1; done
-        export VAULT_ADDR=http://vault-active:8200
-        until curl -sf -o /dev/null -w "%{http_code}" \
-            http://vault-active:8200/v1/sys/health 2>/dev/null | \
-            grep -qE '^(200|429|503)$'; do sleep 2; done
-        export VAULT_ADDR=http://localhost:8200
-        while ! vault operator raft join http://vault-active:8200; do sleep 3; done
-        export VAULT_ADDR=http://vault-active:8200
-        while ! VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login \
-            role=vault-unseal \
-            jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"); do sleep 4; done
-        export VAULT_TOKEN
-        UNSEAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys 2>/dev/null || true)
+
         if [ -n "$UNSEAL_KEYS" ]; then
-          echo "$UNSEAL_KEYS" | grep -v '^$' | while IFS= read -r key; do
+          if [[ "$HOSTNAME" != "vault-0" ]]; then
+            while ! vault operator raft join http://vault-active:8200; do sleep 3; done
+          fi
+          echo "$UNSEAL_KEYS" | while IFS= read -r key; do
             printf '{"key":"%s"}' "$key" | \
               curl -sf --request PUT --data @- \
                 http://localhost:8200/v1/sys/unseal > /dev/null
           done
         else
-          echo "No local unseal keys found — manual or mesh recovery required"
+          echo "No unseal keys retrieved — manual recovery required"
         fi
+        unset UNSEAL_KEYS
+      else
+        echo "No token from initContainer — manual or mesh recovery required"
       fi

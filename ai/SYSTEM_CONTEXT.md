@@ -150,18 +150,25 @@ A `values.yaml` `preRepoURL`-ból és `project` értékből épít fel minden te
 
 ---
 
-## Jelenlegi nyitott kérdések
+## Jelenlegi nyitott kérdések (ismert adósság)
 
 | Dimenzió | Állapot |
 |---|---|
-| `vault status` exit code handling | ✓ Javítva — HTTP health API |
-| userpass/vault/vault credential | ✓ Eltávolítva M3-ban |
-| Bootstrap job idempotencia | ✓ HTTP 501 check |
-| Recovery Job vault status | ✓ HTTP 503 = sealed OK |
-| Cross-cluster K8s auth (külön mountok) | Nyitott — jelenleg egy shared auth/kubernetes mount |
-| Reviewer token lifecycle (K8s 1.24+ projected) | Nyitott — production blocker |
-| AES-CBC → authenticated encryption | Nyitott — roadmap item |
-| Rekey transactional safety | Nyitott — local/fallback nem atomi |
-| `vault/templates/job.yaml:28` | nem idempotens init | P1 |
-| `vault/values.yaml` postStart | hardkódolt vault/vault credential | P2 — hardening |
-| `vault/templates/job.yaml:66` | `tail -f /dev/null` root token | P2 — hardening |
+| Cross-cluster K8s auth (külön mountok per cluster) | Nyitott — shared auth/kubernetes mount |
+| Rekey transactional safety | Nyitott — local/fallback write nem atomi |
+| AES-CBC → authenticated encryption (GCM/age/SOPS) | Roadmap |
+| bootstrap.autoInit=false production default | Nyitott |
+| Recovery successPolicy (any / quorum / all) | Nyitott — jelenleg: legalább 1 siker |
+
+## Lezárt / régi adósság (ne hozd vissza)
+
+A következők már **nem érvényesek** a jelenlegi chartra:
+
+| Régi probléma | Lezárás |
+|---|---|
+| vault/vault hardkódolt userpass | M3-ban eltávolítva |
+| nem idempotens init job | HTTP 501 check javította |
+| `tail -f /dev/null` root token | eltávolítva M3-ban |
+| hardkódolt kube-api-access volume | eltávolítva M2-ben |
+| root token KV-ban marad | nem persistálódik, tmp fájlok törlődnek |
+| duplikált ClusterRoleBinding | M1-ben javítva, Release.Name alapú nevek |

@@ -42,7 +42,7 @@ apps/        ArgoCD AppProject + Application manifest-ek
 vault/       Vault Helm chart wrapper (HashiCorp upstream, v0.32.0 / Vault 1.21.2), Integrated Raft storage
   templates/
     configmap.yaml             vault-unseal policy HCL
-    job.yaml                   init/recovery job (jelenlegi: nem idempotens)
+    job.yaml                   bootstrap init job (idempotens, Helm post-install hook)
     rbac.yaml                  ClusterRoleBinding-ok (Release.Name alapú nevek, 3 binding)
     serviceaccount.yaml        vault-auth SA
     serviceaccount-secret.yaml vault-auth token secret

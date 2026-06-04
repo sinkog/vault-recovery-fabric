@@ -4,6 +4,12 @@
 {{- if and .Values.recovery.rekey.enabled .Values.recovery.rekey.confirm (not .Values.recovery.rekey.experimental) }}
 {{- fail "rekey requires recovery.rekey.experimental=true — acknowledge you understand the risks" }}
 {{- end }}
+{{- if gt (int .Values.recovery.rekey.keyThreshold) (int .Values.recovery.rekey.keyShares) }}
+{{- fail (printf "recovery.rekey.keyThreshold (%d) must be <= keyShares (%d)" (int .Values.recovery.rekey.keyThreshold) (int .Values.recovery.rekey.keyShares)) }}
+{{- end }}
+{{- if and .Values.recovery.rekey.syncFallback (not .Values.recovery.fallback.addr) }}
+{{- fail "recovery.rekey.syncFallback=true requires recovery.fallback.addr to be set" }}
+{{- end }}
 {{- if and .Values.recovery.rekey.enabled .Values.recovery.rekey.confirm .Values.recovery.rekey.experimental }}
 apiVersion: batch/v1
 kind: Job

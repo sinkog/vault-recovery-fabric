@@ -1,3 +1,7 @@
+> **ARCHIVED / HISTORICAL — DO NOT USE AS CURRENT IMPLEMENTATION CONTEXT**
+> Ez a fájl az eredeti tervezési dokumentum. A jelenlegi chart állapotát az `ai/SYSTEM_CONTEXT.md`,
+> `ai/ONBOARDING.md` és `ai/ROADMAP.md` írja le. Ez a fájl csak fejlesztéstörténeti referencia.
+
 # Vault Recovery Fabric – megvalósítási terv a jelenlegi chart átalakításához
 
 ## 1. Kiindulási állapot

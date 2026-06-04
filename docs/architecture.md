@@ -45,7 +45,7 @@ vault/
     Initializes vault, configures K8s auth
     Stores unseal keys in KV only if bootstrap.storeUnsealKeys=true
 
-  vault-recovery-job (on-demand, triggered by recovery.triggerId=<unique-event-id>)
+  vault-recovery-job (on-demand, triggered by recovery.manualJob.triggerId=<unique-event-id>)
     serviceAccount: vault-recovery
     initContainer: K8s auth against fallback vault → short-lived token (Memory emptyDir)
     main: fetch unseal keys → sys/unseal via curl → cleanup
@@ -81,7 +81,7 @@ vault/
 
 ## NetworkPolicy notes
 
-When `recovery.triggerId` is set and `networkPolicy.enabled=true`, `recovery.fallback.cidr`
+When `recovery.manualJob.triggerId` is set and `networkPolicy.enabled=true`, `recovery.fallback.cidr`
 is **required** — the chart fails rendering without it. Set it to the CIDR of the fallback
 Vault cluster to restrict egress to that range only.
 

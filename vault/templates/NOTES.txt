@@ -11,11 +11,11 @@ Using a different release name will break the recovery flow.
   Supported: helm upgrade -i vault ./vault -n {{ .Release.Namespace }}
   Not supported: helm upgrade -i vault-recovery-fabric ./vault -n {{ .Release.Namespace }}
 
-{{- if .Values.recovery.triggerId }}
+{{- if .Values.recovery.manualJob.triggerId }}
 
-Recovery job triggered: vault-recovery-{{ .Values.recovery.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }}
-Monitor: kubectl logs -n {{ .Release.Namespace }} job/vault-recovery-{{ .Values.recovery.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }} -f
-Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --set recovery.triggerId=""
+Recovery job triggered: vault-recovery-{{ .Values.recovery.manualJob.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }}
+Monitor: kubectl logs -n {{ .Release.Namespace }} job/vault-recovery-{{ .Values.recovery.manualJob.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }} -f
+Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --set recovery.manualJob.triggerId=""
 {{- end }}
 
 {{- if and .Values.recovery.rekey.enabled .Values.recovery.rekey.confirm }}

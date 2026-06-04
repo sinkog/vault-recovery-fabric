@@ -16,7 +16,8 @@ Vault clusters seal themselves on restart. The standard response is either:
 
 `vault-recovery-fabric` takes a third path: **recovery-as-code**.
 The recovery behaviour is declared in the Helm values and deployed as Kubernetes resources.
-No cloud dependency. No runbook.
+No cloud KMS dependency. Reduced runbook: one manually recovered seed cluster
+can restore the rest through declared recovery jobs.
 
 ```
 Vault-A sealed  →  recovery job  →  Vault-B (fallback)
@@ -134,7 +135,7 @@ Each recovery is an explicit event identified by a unique `triggerId`:
 
 ```bash
 helm upgrade vault ./vault -n kube-vault \
-  --set recovery.triggerId=$(date +%Y%m%d%H%M%S) \
+  --set recovery.manualJob.triggerId=$(date +%Y%m%d%H%M%S) \
   --set recovery.fallback.addr=https://vault-b.example.com:8200 \
   --set recovery.fallback.cidr=10.10.20.0/24
 ```
@@ -146,7 +147,7 @@ After recovery completes, reset:
 
 ```bash
 helm upgrade vault ./vault -n kube-vault \
-  --set recovery.triggerId=""
+  --set recovery.manualJob.triggerId=""
 ```
 
 ## Key Rotation (Rekey)
@@ -216,11 +217,12 @@ access to the K8s API of the target cluster.
 |---|---|---|
 | `bootstrap.storeUnsealKeys` | `false` | Store unseal keys in local KV (lab only — see note) |
 | `networkPolicy.enabled` | `true` | Deploy NetworkPolicy resources |
-| `recovery.triggerId` | `""` | Non-empty triggers recovery job (unique per event) |
+| `recovery.manualJob.triggerId` | `""` | Non-empty triggers the operator recovery Job (must be string, not number) |
+| `recovery.podUnseal.enabled` | `true` | Enable pod lifecycle assisted-unseal via initContainer |
 | `recovery.selfName` | `""` | This cluster's name in the mesh |
 | `recovery.fallback.addr` | `""` | Fallback Vault API address (required when triggerId set) |
 | `recovery.fallback.tlsSkipVerify` | `false` | Skip TLS verification (**never use in production**) |
-| `recovery.fallback.cidr` | `""` | Fallback Vault CIDR for NetworkPolicy egress; **required** when `recovery.triggerId` is set with `networkPolicy.enabled=true` (chart fails without it) |
+| `recovery.fallback.cidr` | `""` | Fallback Vault CIDR for NetworkPolicy egress; **required** when `recovery.manualJob.triggerId` is set with `networkPolicy.enabled=true` (chart fails without it) |
 | `recovery.rekey.experimental` | `true` | Acknowledge rekey is experimental |
 | `recovery.rekey.confirm` | `false` | Must be `true` to trigger rekey job |
 | `recovery.rekey.keyShares` | `5` | Number of new key shares |

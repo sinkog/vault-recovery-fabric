@@ -49,9 +49,21 @@
       "type": "object",
       "description": "Cross-cluster recovery mesh configuration. Controls the recovery Job and pod-level initContainer unseal logic.",
       "properties": {
-        "triggerId": {
-          "type": "string",
-          "description": "Set to a unique string (e.g. date +%Y%m%d%H%M%S) to trigger a recovery Job. Reset to empty after recovery completes. Must be a string, not a number."
+        "manualJob": {
+          "type": "object",
+          "description": "Operator-triggered fan-out recovery Job. Only usable after at least one Vault cluster is unsealed (provides the fallback recovery source). Trigger: --set recovery.manualJob.triggerId=$(date +%Y%m%d%H%M%S)",
+          "properties": {
+            "triggerId":    { "type": "string", "description": "Non-empty string triggers the recovery Job. Must be a string (not a number). Reset to empty after recovery completes." },
+            "targets":      { "type": "array",  "description": "List of Vault pod addresses to unseal. Already-unsealed pods are skipped.", "items": { "type": "string" } },
+            "keyThreshold": { "type": "integer", "minimum": 1, "description": "Minimum number of unseal keys required in the recovery material before attempting unseal." }
+          }
+        },
+        "podUnseal": {
+          "type": "object",
+          "description": "Pod lifecycle assisted-unseal. The recovery-prep initContainer runs on every pod start and prepares a token for postStart to use.",
+          "properties": {
+            "enabled": { "type": "boolean", "description": "Enable the recovery-prep initContainer and its ConfigMap. Disable to remove pod-level unseal automation entirely." }
+          }
         },
         "selfName": {
           "type": "string",

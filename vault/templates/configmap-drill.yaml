@@ -49,7 +49,7 @@ data:
 
     2. Trigger recovery job with a unique ID:
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
-         --set recovery.triggerId=drill-$(date +%Y%m%d%H%M%S) \
+         --set recovery.manualJob.triggerId=drill-$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
          --set recovery.fallback.cidr={{ .Values.recovery.fallback.cidr | default "<FALLBACK-CIDR>" }}
 
@@ -61,7 +61,7 @@ data:
 
     5. Reset triggerId:
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
-         --set recovery.triggerId=""
+         --set recovery.manualJob.triggerId=""
 
   full-outage-recovery.md: |
     # Full Outage Recovery (all clusters sealed)
@@ -78,13 +78,13 @@ data:
 
     3. Once seed is unsealed, trigger recovery on each peer in order:
        helm upgrade vault ./vault -n <peer-namespace> \
-         --set recovery.triggerId=outage-recovery-$(date +%Y%m%d%H%M%S) \
+         --set recovery.manualJob.triggerId=outage-recovery-$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr=<seed-cluster-addr> \
          --set recovery.fallback.cidr=<seed-cluster-cidr>
 
     4. Reset triggerId after each peer recovers:
        helm upgrade vault ./vault -n <peer-namespace> \
-         --set recovery.triggerId=""
+         --set recovery.manualJob.triggerId=""
 
     5. Verify cascade recovery on all peers.
 

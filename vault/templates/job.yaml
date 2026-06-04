@@ -23,18 +23,15 @@ spec:
         - |
           VAULT_API=http://vault-0.vault-internal:8200
 
-          # Wait for Vault API to respond (any HTTP status means API is up)
-          until curl -s -o /dev/null -w "%{http_code}" \
-              "${VAULT_API}/v1/sys/health" 2>/dev/null | \
-              grep -qE '^[2345][0-9][0-9]$'; do
+          # Wait for Vault API to respond — vault CLI used (no curl in vault image)
+          until vault status -address="${VAULT_API}" > /dev/null 2>&1 || \
+                vault status -address="${VAULT_API}" 2>&1 | grep -q "Initialized"; do
             sleep 1
           done
 
-          # 501 = not initialized; anything else = already initialized
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${VAULT_API}/v1/sys/health" 2>/dev/null || echo "000")
-          if [ "$HTTP_CODE" != "501" ]; then
-            echo "Vault already initialized (HTTP $HTTP_CODE), skipping init"
+          # Check if already initialized (vault status exits 0 if unsealed, 2 if sealed but init)
+          if vault status -address="${VAULT_API}" 2>&1 | grep -q "Initialized.*true"; then
+            echo "Vault already initialized, skipping init"
             exit 0
           fi
 
@@ -48,8 +45,10 @@ spec:
 
           while IFS= read -r key; do
             printf '{"key":"%s"}' "$key" | \
-              curl -sf --request PUT --data @- \
-                "${VAULT_API}/v1/sys/unseal" > /dev/null
+              wget -q --post-file=- \
+                --header="Content-Type: application/json" \
+                -O /dev/null \
+                "${VAULT_API}/v1/sys/unseal"
           done < /tmp/vault-unseal.txt
 
           export VAULT_TOKEN=$(cat /tmp/vault-token.txt)

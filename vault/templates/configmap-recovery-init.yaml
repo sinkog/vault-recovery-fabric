@@ -7,38 +7,43 @@ data:
     #!/bin/sh
     PREP_DIR=/vault/recovery-prep
 
+    # vault_reachable <addr> — returns 0 if vault API responds (any state)
+    vault_reachable() {
+      vault status -address="$1" > /dev/null 2>&1
+      RC=$?
+      # exit 0 = unsealed, exit 2 = sealed/init, exit 1 = error/unreachable
+      [ $RC -eq 0 ] || [ $RC -eq 2 ]
+    }
+
+    # vault_unsealed <addr> — returns 0 if vault is unsealed (active or standby)
+    vault_unsealed() {
+      vault status -address="$1" > /dev/null 2>&1
+    }
+
     # Loop until we have a token (or vault-active is confirmed available)
     # SKIP_ACTIVE_CHECK=true: skip local vault-active check (used by recovery-job)
     until [ -s ${PREP_DIR}/vault-token ]; do
       VAULT_URL=""
 
       if [ "${SKIP_ACTIVE_CHECK:-false}" != "true" ]; then
-        # Step 1: vault-active él-e?
-        ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-          http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
-
-        if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
+        if vault_unsealed "http://vault-active:8200"; then
           VAULT_URL="http://vault-active:8200"
           AUTH_ROLE="vault-unseal"
           AUTH_PATH="auth/kubernetes"
           SECRET_PATH="{{ include "vrf.localSecretPath" . }}"
-          # token request below
         fi
       fi
 
       if [ -z "$VAULT_URL" ]; then
         {{- if .Values.recovery.fallback.addr }}
-        # Step 2: fallback él-e?
-        FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-          "{{ .Values.recovery.fallback.addr }}/v1/sys/health" 2>/dev/null || echo "000")
-
-        if [ "$FB_CODE" = "200" ] || [ "$FB_CODE" = "429" ]; then
+        if vault_reachable "{{ .Values.recovery.fallback.addr }}" && \
+           vault_unsealed "{{ .Values.recovery.fallback.addr }}"; then
           VAULT_URL="{{ .Values.recovery.fallback.addr }}"
           AUTH_ROLE="{{ .Values.recovery.fallback.vaultRole }}"
           AUTH_PATH="{{ .Values.recovery.fallback.k8sAuthPath }}"
           SECRET_PATH="{{ include "vrf.fallbackSecretPath" . }}"
         else
-          echo "Neither vault-active nor fallback reachable — exiting (no recovery source available)"
+          echo "Neither vault-active nor fallback reachable/unsealed — exiting (no recovery source)"
           exit 0
         fi
         {{- else }}
@@ -47,7 +52,6 @@ data:
         {{- end }}
       fi
 
-      # Step 3: token kérés
       export VAULT_ADDR=$VAULT_URL
       {{- if .Values.recovery.fallback.tlsSkipVerify }}
       export VAULT_SKIP_VERIFY=true
@@ -64,7 +68,6 @@ data:
         continue
       fi
 
-      # Step 4: mentés emptyDir-be
       echo "$VAULT_URL"    > ${PREP_DIR}/vault-url
       echo "$VAULT_TOKEN"  > ${PREP_DIR}/vault-token
       echo "$SECRET_PATH"  > ${PREP_DIR}/secret-path

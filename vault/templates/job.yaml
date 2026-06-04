@@ -57,6 +57,10 @@ spec:
 
           vault secrets list | grep -q '^secret/' || vault secrets enable -path=secret -version=2 kv
           vault auth list   | grep -q '^kubernetes/' || vault auth enable kubernetes
+          until [ -s /var/run/secrets/vault-reviewer/token ]; do
+            echo "Waiting for vault-reviewer-token to be populated..."
+            sleep 2
+          done
           vault write auth/kubernetes/config \
             token_reviewer_jwt="$(cat /var/run/secrets/vault-reviewer/token)" \
             kubernetes_host=https://${KUBERNETES_PORT_443_TCP_ADDR}:443 \

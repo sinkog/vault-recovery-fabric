@@ -91,13 +91,8 @@ spec:
           {{- if .Values.bootstrap.storeUnsealKeys }}
           vault kv put {{ include "vrf.localSecretPath" . }} contents=@/tmp/vault-unseal.txt
           {{- end }}
-          echo "=== VAULT INIT COMPLETE ==="
-          echo "Root token: $(cat /tmp/vault-token.txt)"
-          echo "Unseal keys:"
-          cat /tmp/vault-unseal.txt
-          echo "==========================="
-          echo "Job paused for debugging — exec in to inspect. Remove sleep to continue."
-          sleep 3600
+          echo "=== VAULT BOOTSTRAP COMPLETE ==="
+          echo "Root token stored in vault KV. Retrieve with: vault kv get secret/vault/unseal-keys"
           rm -f /tmp/init.json /tmp/vault-unseal.txt /tmp/vault-token.txt
         volumeMounts:
         - name: config-volume

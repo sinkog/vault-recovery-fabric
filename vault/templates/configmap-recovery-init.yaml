@@ -66,8 +66,8 @@ data:
       if [ -z "$VAULT_TOKEN" ]; then
         TOKEN_FAIL=$((TOKEN_FAIL + 1))
         echo "Token request failed from ${VAULT_URL} (attempt ${TOKEN_FAIL}) retrying in 5s..."
-        if [ "$TOKEN_FAIL" -ge 10 ]; then
-          echo "Token request failed 10 times — exiting, pod will start sealed"
+        if [ "$TOKEN_FAIL" -ge 30 ]; then
+          echo "Token request failed 30 times — exiting, pod will start sealed"
           exit 0
         fi
         sleep 5

@@ -36,8 +36,8 @@ recovery:
     keyShares: 5
     keyThreshold: 3
   encryption:
-    enabled: false
-    passphraseSecret: ""
+    enabled: true
+    passphraseSecret: "vault-recovery-passphrase"
 
 vault:
   server:

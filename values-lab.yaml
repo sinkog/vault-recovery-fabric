@@ -17,6 +17,7 @@ recovery:
     keyThreshold: 1
   encryption:
     enabled: false
+    passphraseSecret: ""
 
 vault:
   server:

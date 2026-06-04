@@ -92,13 +92,6 @@
           "properties": {
             "enabled":          { "type": "boolean", "description": "Encrypt recovery material before storing in fallback Vault. Required in production." },
             "passphraseSecret": { "type": "string", "description": "Name of the Kubernetes Secret containing the 'passphrase' key used for AES-256-CBC encryption/decryption." }
-          },
-          "if": { "properties": { "enabled": { "const": true } } },
-          "then": {
-            "properties": {
-              "passphraseSecret": { "type": "string", "minLength": 1 }
-            },
-            "required": ["passphraseSecret"]
           }
         }
       },

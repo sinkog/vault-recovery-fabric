@@ -117,7 +117,15 @@ vault:
       export VAULT_ADDR=http://localhost:8200
 
       if [[ "$HOSTNAME" != "vault-0" ]]; then
-        while ! vault operator raft join http://vault-active:8200; do sleep 3; done
+        RAFT_TRIES=0
+        until vault operator raft join http://vault-active:8200 || [ $RAFT_TRIES -ge 20 ]; do
+          RAFT_TRIES=$((RAFT_TRIES + 1))
+          sleep 3
+        done
+        if [ $RAFT_TRIES -ge 20 ]; then
+          echo "raft join failed after 20 attempts — staying sealed"
+          exit 0
+        fi
       fi
 
       echo "$UNSEAL_KEYS" | while IFS= read -r key; do
@@ -126,3 +134,11 @@ vault:
             http://localhost:8200/v1/sys/unseal > /dev/null
       done
       unset UNSEAL_KEYS
+
+      FINAL=$(curl -s -o /dev/null -w "%{http_code}" \
+        http://localhost:8200/v1/sys/health 2>/dev/null || echo "000")
+      if [ "$FINAL" = "200" ] || [ "$FINAL" = "429" ] || [ "$FINAL" = "473" ]; then
+        echo "Unseal successful (HTTP ${FINAL})"
+      else
+        echo "Unseal may have failed (HTTP ${FINAL}) — check vault status"
+      fi

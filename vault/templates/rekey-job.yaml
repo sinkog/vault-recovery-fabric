@@ -26,9 +26,14 @@ spec:
         - |
           export VAULT_ADDR=http://vault-active:8200
 
-          while ! vault status 2>/dev/null; do sleep 2; done
-          if vault status | grep -q "Sealed.*true"; then
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
+          if [ "$HTTP_CODE" = "503" ]; then
             echo "Vault is sealed, cannot rekey"
+            exit 1
+          fi
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "429" ]; then
+            echo "Vault not ready for rekey (HTTP $HTTP_CODE)"
             exit 1
           fi
 

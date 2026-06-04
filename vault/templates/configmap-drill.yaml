@@ -14,7 +14,7 @@ data:
        kubectl exec -n {{ .Release.Namespace }} vault-0 -- vault status
 
     2. Trigger rekey (requires both confirm=true and experimental=true):
-       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --set recovery.rekey.enabled=true \
          --set recovery.rekey.confirm=true \
          --set recovery.rekey.experimental=true \
@@ -32,7 +32,7 @@ data:
          vault kv get {{ .Values.recovery.fallback.secretPath }}
 
     6. Reset all rekey flags:
-       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --set recovery.rekey.enabled=false \
          --set recovery.rekey.confirm=false
 
@@ -48,7 +48,7 @@ data:
        vault operator seal
 
     2. Trigger recovery job with a unique ID:
-       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --set recovery.triggerId=drill-$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }}
 
@@ -59,7 +59,7 @@ data:
        vault status | grep "Sealed.*false"
 
     5. Reset triggerId:
-       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --set recovery.triggerId=""
 
   full-outage-recovery.md: |
@@ -76,12 +76,12 @@ data:
        vault operator unseal <key-3>
 
     3. Once seed is unsealed, trigger recovery on each peer in order:
-       helm upgrade vault-recovery-fabric ./vault -n <peer-namespace> \
+       helm upgrade vault ./vault -n <peer-namespace> \
          --set recovery.triggerId=outage-recovery-$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr=<seed-cluster-addr>
 
     4. Reset triggerId after each peer recovers:
-       helm upgrade vault-recovery-fabric ./vault -n <peer-namespace> \
+       helm upgrade vault ./vault -n <peer-namespace> \
          --set recovery.triggerId=""
 
     5. Verify cascade recovery on all peers.

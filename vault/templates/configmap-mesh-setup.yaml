@@ -59,10 +59,12 @@ data:
        PASSPHRASE=$(kubectl get secret vault-recovery-passphrase \
          -n {{ .Release.Namespace }} -o jsonpath='{.data.passphrase}' | base64 -d)
 
-       # Read unseal keys from THIS cluster's local Vault (requires storeUnsealKeys=true in lab)
-       # In production, source material must be obtained via out-of-band bootstrap process
-       LOCAL_KEYS=$(VAULT_ADDR=http://vault-active.{{ .Release.Namespace }}:8200 \
-         vault kv get -field=contents secret/vault/unseal-keys)
+       # Source: secure out-of-band bootstrap custody.
+       # The unseal keys were printed by vault operator init — store them securely
+       # and reference them here. Do NOT read from local KV in production.
+       LOCAL_KEYS=$(cat /secure/bootstrap/{{ .Values.recovery.selfName | default "<this-vault>" }}-unseal-keys.txt)
+       # Lab-only alternative (requires bootstrap.storeUnsealKeys=true):
+       # LOCAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys)
 
        # Encrypt and write to FALLBACK Vault
        ENCRYPTED=$(echo "$LOCAL_KEYS" \
@@ -72,12 +74,12 @@ data:
 
     5. Trigger recovery:
 
-       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --set recovery.triggerId=$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr={{ .Values.recovery.fallback.addr | default "<FALLBACK-VAULT-ADDR>" }}
 
     6. Reset after recovery:
 
-       helm upgrade vault-recovery-fabric ./vault -n {{ .Release.Namespace }} \
+       helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --set recovery.triggerId=""
 {{- end }}

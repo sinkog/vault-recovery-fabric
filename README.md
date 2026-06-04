@@ -68,7 +68,7 @@ After install, the init job runs once and:
 **Lab install** (local auto-unseal enabled):
 
 ```bash
-helm upgrade -i vault-recovery-fabric ./vault -n kube-vault \
+helm upgrade -i vault ./vault -n kube-vault \
   --create-namespace -f values-lab.yaml
 ```
 
@@ -152,13 +152,13 @@ Rekey is a destructive, high-impact operation and requires explicit triple confi
 > If neither applies, provide the material out-of-band before triggering rekey.
 
 ```bash
-helm upgrade vault-recovery-fabric ./vault -n kube-vault \
+helm upgrade vault ./vault -n kube-vault \
   --set recovery.rekey.enabled=true \
   --set recovery.rekey.confirm=true \
   --set recovery.rekey.experimental=true
 
 # After completion, reset all flags:
-helm upgrade vault-recovery-fabric ./vault -n kube-vault \
+helm upgrade vault ./vault -n kube-vault \
   --set recovery.rekey.enabled=false \
   --set recovery.rekey.confirm=false
 ```

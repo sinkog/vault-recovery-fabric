@@ -45,7 +45,9 @@ vault:
       if [[ "$HOSTNAME" != "vault-0" ]] || nc -z vault-active 8200; then
         while ! nc -z vault-active 8200; do sleep 1; done
         export VAULT_ADDR=http://vault-active:8200
-        while ! vault status | grep "Initialized" | grep "true"; do sleep 2; done
+        until curl -sf -o /dev/null -w "%{http_code}" \
+            http://vault-active:8200/v1/sys/health 2>/dev/null | \
+            grep -qE '^(200|429|503)$'; do sleep 2; done
         export VAULT_ADDR=http://localhost:8200
         while ! vault operator raft join http://vault-active:8200; do sleep 3; done
         export VAULT_ADDR=http://vault-active:8200

@@ -27,7 +27,7 @@ Fejlesztési irányok és hardening lista: `ai/ROADMAP.md`
 |---|---|---|
 | Scope | single cluster | multi-cluster recovery mesh |
 | Storage backend | Integrated Raft (Consul eltávolítva) | Integrated Raft |
-| Auth | hardkódolt vault/vault | ephemeral K8s SA JWT, rövid TTL |
+| Auth | ephemeral K8s SA JWT (vault/vault eltávolítva) | ephemeral K8s SA JWT, rövid TTL |
 | Recovery job | nem idempotens | two-phase (initContainer + main) |
 | Credential tárolás | root token KV-ban marad | recovery material célcluster identity-hez kötve |
 | Namespace | hardkódolt | paraméterezett |
@@ -38,7 +38,7 @@ Fejlesztési irányok és hardening lista: `ai/ROADMAP.md`
 
 ```
 apps/        ArgoCD AppProject + Application manifest-ek
-vault/       Vault Helm chart wrapper (HashiCorp upstream, v0.28.0), Integrated Raft storage
+vault/       Vault Helm chart wrapper (HashiCorp upstream, v0.32.0 / Vault 1.21.2), Integrated Raft storage
   templates/
     configmap.yaml             vault-unseal policy HCL
     job.yaml                   init/recovery job (jelenlegi: nem idempotens)

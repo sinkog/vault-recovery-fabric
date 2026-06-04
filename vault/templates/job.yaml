@@ -2,6 +2,10 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: vault-wait-job
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "5"
 spec:
   ttlSecondsAfterFinished: 600
   template:
@@ -17,16 +21,24 @@ spec:
         command: ["sh", "-c"]
         args:
         - |
-          while ! nc -z vault-0.vault-internal 8200; do sleep 1; done
-          export VAULT_ADDR=http://vault-0.vault-internal:8200
+          VAULT_API=http://vault-0.vault-internal:8200
 
-          while ! vault status 2>/dev/null; do sleep 1; done
+          # Wait for Vault API to respond (any HTTP status means API is up)
+          until curl -sf -o /dev/null -w "%{http_code}" \
+              "${VAULT_API}/v1/sys/health" 2>/dev/null | \
+              grep -qE '^[2345][0-9][0-9]$'; do
+            sleep 1
+          done
 
-          if vault status 2>/dev/null | grep -q "Initialized.*true"; then
-            echo "Vault already initialized, skipping init"
+          # 501 = not initialized; anything else = already initialized
+          HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+            "${VAULT_API}/v1/sys/health" 2>/dev/null || echo "000")
+          if [ "$HTTP_CODE" != "501" ]; then
+            echo "Vault already initialized (HTTP $HTTP_CODE), skipping init"
             exit 0
           fi
 
+          export VAULT_ADDR=$VAULT_API
           vault operator init > /tmp/keys.txt
           grep Unseal /tmp/keys.txt | awk '{ print $4 }' > /tmp/vault-unseal.txt
           grep Token  /tmp/keys.txt | awk '{ print $4 }' > /tmp/vault-token.txt
@@ -34,7 +46,7 @@ spec:
           while IFS= read -r key; do
             printf '{"key":"%s"}' "$key" | \
               curl -sf --request PUT --data @- \
-                "http://vault-0.vault-internal:8200/v1/sys/unseal" > /dev/null
+                "${VAULT_API}/v1/sys/unseal" > /dev/null
           done < /tmp/vault-unseal.txt
 
           export VAULT_TOKEN=$(cat /tmp/vault-token.txt)

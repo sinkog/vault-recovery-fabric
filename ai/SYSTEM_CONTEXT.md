@@ -81,9 +81,11 @@ vault-0 elérhető → vault operator init → unseal keys + root token
 ```
 Ha vault-0 ÉS vault-active még nem él → skip
 Egyébként:
+  → HTTP health check vault-active:8200/v1/sys/health (sealed=503 is OK)
   → raft join vault-active-hoz
-  → login: vault-unseal userpass (hardkódolt vault/vault) ← HARDENING SZÜKSÉGES
-  → kv get secret/vault/unseal-keys → soronként unseal
+  → K8s SA JWT → auth/kubernetes/login role=vault-unseal → rövid TTL token
+  → kv get secret/vault/unseal-keys → curl PUT /v1/sys/unseal (soronként)
+  → ha nincs local unseal key (storeUnsealKeys=false): warning, pod elindul sealed
 ```
 
 ---
@@ -125,8 +127,12 @@ Az attacker kell:
 ### Credential lifecycle
 
 ```
-Nem kívánatos:
-  fix vault/vault user
+Implementált védelem (jelenlegi):
+  K8s SA JWT → auth/kubernetes/login → TTL=5m, num_uses=2
+  passphrase K8s Secret-ben (encryption.enabled=true esetén)
+
+Nem kívánatos (eltávolítva):
+  fix vault/vault userpass (M3-ban eltávolítva)
   hosszú életű token
   root token tárolása
   újrahasználható recovery credential
@@ -142,18 +148,22 @@ Cél:
 Az `apps/` chart ArgoCD AppProject + Application manifest-eket tartalmaz.
 A `values.yaml` `preRepoURL`-ból és `project` értékből épít fel minden template hivatkozást.
 
-**Ismert bug:** minden `{{ spec.* }}` hivatkozásból hiányzik a `.Values.` prefix — helm render hibát okoz.
+**Ismert bug:** minden `{{ spec.* }}` hivatkozásból hiányzik a `.Values.` prefix — helm render hibát okoz. *(M1-ben javítva)*
 
 ---
 
-## Ismert hibák összefoglalója
+## Jelenlegi nyitott kérdések
 
-| Hely | Probléma | Prioritás |
-|---|---|---|
-| `vault/templates/rbac.yaml` | duplikált ClusterRoleBinding név | P0 — deploy blocker |
-| `apps/templates/appproject.yaml` | hiányzó `apiVersion` | P0 — ArgoCD blocker |
-| `apps/templates/*.yaml` | hiányzó `.Values.` prefix | P0 — helm render blocker |
-| `vault/templates/job.yaml:75` | hardkódolt volume név | P1 |
+| Dimenzió | Állapot |
+|---|---|
+| `vault status` exit code handling | ✓ Javítva — HTTP health API |
+| userpass/vault/vault credential | ✓ Eltávolítva M3-ban |
+| Bootstrap job idempotencia | ✓ HTTP 501 check |
+| Recovery Job vault status | ✓ HTTP 503 = sealed OK |
+| Cross-cluster K8s auth (külön mountok) | Nyitott — jelenleg egy shared auth/kubernetes mount |
+| Reviewer token lifecycle (K8s 1.24+ projected) | Nyitott — production blocker |
+| AES-CBC → authenticated encryption | Nyitott — roadmap item |
+| Rekey transactional safety | Nyitott — local/fallback nem atomi |
 | `vault/templates/job.yaml:28` | nem idempotens init | P1 |
 | `vault/values.yaml` postStart | hardkódolt vault/vault credential | P2 — hardening |
 | `vault/templates/job.yaml:66` | `tail -f /dev/null` root token | P2 — hardening |

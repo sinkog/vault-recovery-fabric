@@ -47,30 +47,35 @@ spec:
 
           vault operator rekey -cancel 2>/dev/null || true
 
-          NONCE=$(vault operator rekey \
+          vault operator rekey -format=json \
             -init \
             -key-shares={{ .Values.recovery.rekey.keyShares }} \
             -key-threshold={{ .Values.recovery.rekey.keyThreshold }} \
-            | grep -i 'nonce' | awk '{print $NF}')
+            > /tmp/rekey-init.json
+
+          NONCE=$(grep '"nonce"' /tmp/rekey-init.json | \
+            sed 's/.*"nonce": *"\([^"]*\)".*/\1/')
+          rm -f /tmp/rekey-init.json
 
           if [ -z "$NONCE" ]; then
-            echo "Rekey init failed: no nonce returned"
+            echo "Rekey init failed: no nonce in response"
             exit 1
           fi
 
           NEW_KEYS=""
           while IFS= read -r key; do
-            OUTPUT=$(vault operator rekey -nonce="$NONCE" "$key" 2>/dev/null)
-            if echo "$OUTPUT" | grep -q "^Key 1:"; then
-              NEW_KEYS=$(echo "$OUTPUT" | grep "^Key [0-9]*:" | awk '{print $3}')
+            vault operator rekey -format=json \
+              -nonce="$NONCE" "$key" > /tmp/rekey-out.json 2>/dev/null || true
+            if grep -q '"complete": *true' /tmp/rekey-out.json 2>/dev/null; then
+              NEW_KEYS=$(grep -oE '"[0-9a-f]{40,}"' /tmp/rekey-out.json | tr -d '"')
               break
             fi
           done < /tmp/current-keys.txt
 
-          rm -f /tmp/current-keys.txt
+          rm -f /tmp/current-keys.txt /tmp/rekey-out.json
 
           if [ -z "$NEW_KEYS" ]; then
-            echo "Rekey failed: insufficient key shares"
+            echo "Rekey failed: insufficient key shares or parse error"
             exit 1
           fi
 

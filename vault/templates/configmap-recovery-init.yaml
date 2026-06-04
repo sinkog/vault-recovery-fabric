@@ -38,14 +38,12 @@ data:
           AUTH_PATH="{{ .Values.recovery.fallback.k8sAuthPath }}"
           SECRET_PATH="{{ include "vrf.fallbackSecretPath" . }}"
         else
-          echo "Neither vault-active nor fallback reachable, retrying in 10s..."
-          sleep 10
-          continue
+          echo "Neither vault-active nor fallback reachable — exiting (no recovery source available)"
+          exit 0
         fi
         {{- else }}
-        echo "vault-active unreachable and no fallback configured, retrying in 10s..."
-        sleep 10
-        continue
+        echo "vault-active unreachable and no fallback configured — exiting (bootstrap job will handle init)"
+        exit 0
         {{- end }}
       fi
 

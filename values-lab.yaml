@@ -19,6 +19,7 @@ recovery:
   encryption:
     enabled: false
     passphraseSecret: ""
+    autoGeneratePassphrase: true
 
 vault:
   server:

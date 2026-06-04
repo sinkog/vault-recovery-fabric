@@ -27,7 +27,7 @@ recovery:
   # manualJob: operátori fan-out recovery eszköz.
   # Csak akkor futtatható, ha a fallback Vault már elérhető
   # (az első Vault kézi feloldása után).
-  # Trigger: helm upgrade --set recovery.manualJob.triggerId=$(date +%Y%m%d%H%M%S)
+  # Trigger: helm upgrade --set-string recovery.manualJob.triggerId=$(date +%Y%m%d%H%M%S)
   manualJob:
     triggerId: ""
     targets:
@@ -53,6 +53,7 @@ recovery:
   encryption:
     enabled: true
     passphraseSecret: "vault-recovery-passphrase"
+    autoGeneratePassphrase: false
 
 vault:
   server:
@@ -62,27 +63,19 @@ vault:
       repository: "hashicorp/vault"
       tag: "1.21.2"
       pullPolicy: IfNotPresent
-    extraInitContainers:
-      - name: recovery-prep
-        image: hashicorp/vault:1.21.2
-        imagePullPolicy: IfNotPresent
-        command: [sh, /vault/scripts/recovery-init.sh]
-        volumeMounts:
-          - name: recovery-prep
-            mountPath: /vault/recovery-prep
-          - name: recovery-init-script
-            mountPath: /vault/scripts
     volumes:
-      - name: recovery-prep
-        emptyDir:
-          medium: Memory
-      - name: recovery-init-script
-        configMap:
-          name: vault-recovery-init-script
-          defaultMode: 0755
+      - name: vault-recovery-passphrase
+        secret:
+          secretName: vault-recovery-passphrase
+          items:
+            - key: passphrase
+              path: passphrase
     volumeMounts:
-      - name: recovery-prep
-        mountPath: /vault/recovery-prep
+      - name: vault-recovery-passphrase
+        mountPath: /vault/recovery-passphrase
+        readOnly: true
+    # extraInitContainers for podUnseal are defined in values-mesh.yaml / values-production.yaml.
+    # Base values intentionally omit them so podUnseal.enabled=false actually works.
     affinity: ""
     ha:
       enabled: true

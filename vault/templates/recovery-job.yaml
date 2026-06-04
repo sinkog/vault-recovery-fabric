@@ -9,6 +9,7 @@ metadata:
     "helm.sh/hook-weight": "10"
 spec:
   ttlSecondsAfterFinished: 300
+  activeDeadlineSeconds: 600
   template:
     metadata:
       labels:

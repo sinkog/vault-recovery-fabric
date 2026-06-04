@@ -78,10 +78,10 @@ spec:
             bound_service_account_names=vault-recovery \
             bound_service_account_namespaces={{ .Release.Namespace }} \
             policies=vault-rekey \
-            ttl=10m \
-            token_num_uses=3
+            ttl=15m \
+            token_num_uses=20
           {{- if .Values.bootstrap.storeUnsealKeys }}
-          vault kv put secret/vault/unseal-keys contents=@/tmp/vault-unseal.txt
+          vault kv put {{ include "vrf.localSecretPath" . }} contents=@/tmp/vault-unseal.txt
           {{- end }}
           rm -f /tmp/keys.txt /tmp/vault-unseal.txt /tmp/vault-token.txt
         volumeMounts:

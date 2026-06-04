@@ -48,7 +48,7 @@ spec:
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
           export VAULT_TOKEN
 
-          vault kv get -field=contents secret/vault/unseal-keys \
+          vault kv get -field=contents {{ include "vrf.localSecretPath" . }} \
             | grep -v '^$' > /tmp/current-keys.txt
 
           if [ ! -s /tmp/current-keys.txt ]; then
@@ -90,15 +90,14 @@ spec:
           fi
 
           {{- if .Values.recovery.encryption.enabled }}
-          PASSPHRASE=$(cat /encryption/passphrase)
           STORE_VALUE=$(echo "$NEW_KEYS" | \
-            openssl enc -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" | \
+            openssl enc -aes-256-cbc -pbkdf2 -pass file:/encryption/passphrase | \
             openssl base64 -A)
           {{- else }}
           STORE_VALUE="$NEW_KEYS"
           {{- end }}
 
-          vault kv put secret/vault/unseal-keys contents="$STORE_VALUE"
+          vault kv put {{ include "vrf.localSecretPath" . }} contents="$STORE_VALUE"
           echo "Local KV updated with new keys"
 
           {{- if .Values.recovery.rekey.syncFallback }}
@@ -111,7 +110,7 @@ spec:
             role={{ .Values.recovery.fallback.vaultRole }} \
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
           VAULT_TOKEN="$FALLBACK_TOKEN" vault kv put \
-            {{ .Values.recovery.fallback.secretPath }} contents="$STORE_VALUE"
+            {{ include "vrf.fallbackSecretPath" . }} contents="$STORE_VALUE"
           unset VAULT_SKIP_VERIFY
           echo "Fallback vault updated with new keys"
           {{- end }}

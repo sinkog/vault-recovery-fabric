@@ -57,13 +57,12 @@ spec:
           export VAULT_TOKEN=$(cat /recovery/vault-token)
 
           {{- if .Values.recovery.encryption.enabled }}
-          PASSPHRASE=$(cat /encryption/passphrase)
-          vault kv get -field=contents {{ .Values.recovery.fallback.secretPath }} \
+          vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
             | openssl base64 -d \
-            | openssl enc -d -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" \
+            | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/encryption/passphrase \
             | grep -v '^$' > /recovery/unseal-keys
           {{- else }}
-          vault kv get -field=contents {{ .Values.recovery.fallback.secretPath }} \
+          vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
             | grep -v '^$' > /recovery/unseal-keys
           {{- end }}
 

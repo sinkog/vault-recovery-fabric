@@ -75,10 +75,9 @@
         "properties": {
           "fallback": {
             "properties": {
-              "addr":       { "type": "string", "minLength": 1 },
-              "secretPath": { "type": "string", "minLength": 1 }
+              "addr": { "type": "string", "minLength": 1 }
             },
-            "required": ["addr", "secretPath"]
+            "required": ["addr"]
           }
         }
       }

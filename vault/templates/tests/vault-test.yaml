@@ -61,7 +61,7 @@ spec:
 
       {{- if .Values.bootstrap.storeUnsealKeys }}
       echo "=== recovery material readable (bootstrap.storeUnsealKeys=true) ==="
-      vault kv get secret/vault/unseal-keys || exit 1
+      vault kv get {{ include "vrf.localSecretPath" . }} || exit 1
       {{- else }}
       echo "=== recovery material check skipped (bootstrap.storeUnsealKeys=false) ==="
       echo "    Local recovery material not expected; mesh or out-of-band recovery applies."
@@ -103,7 +103,7 @@ spec:
       export VAULT_TOKEN
 
       echo "=== recovery material present in fallback vault ==="
-      vault kv get {{ .Values.recovery.fallback.secretPath }} || exit 1
+      vault kv get {{ include "vrf.fallbackSecretPath" . }} || exit 1
 
       echo "=== mesh auth checks passed ==="
   restartPolicy: Never

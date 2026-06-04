@@ -57,6 +57,23 @@ spec:
       protocol: TCP
     - port: 8201
       protocol: TCP
+  {{- if .Values.networkPolicy.allowClientPodLabels }}
+  - from:
+    - podSelector:
+        matchLabels: {{ .Values.networkPolicy.allowClientPodLabels | toJson }}
+    ports:
+    - port: 8200
+      protocol: TCP
+  {{- end }}
+  {{- range .Values.networkPolicy.allowClientNamespaces }}
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: {{ . }}
+    ports:
+    - port: 8200
+      protocol: TCP
+  {{- end }}
 {{- if .Values.recovery.triggerId }}
 ---
 apiVersion: networking.k8s.io/v1

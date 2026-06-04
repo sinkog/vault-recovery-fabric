@@ -5,6 +5,8 @@ image:
 
 networkPolicy:
   enabled: true
+  allowClientNamespaces: []
+  allowClientPodLabels: {}
 
 bootstrap:
   storeUnsealKeys: false
@@ -20,7 +22,7 @@ recovery:
     addr: ""
     k8sAuthPath: "auth/kubernetes"
     vaultRole: "vault-recovery-unseal"
-    secretPath: "secret/vault/unseal-keys"
+    secretPath: ""
     tlsSkipVerify: false
     cidr: ""
   rekey:

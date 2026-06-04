@@ -15,12 +15,7 @@ bootstrap:
   keyThreshold: 3
 
 recovery:
-  triggerId: ""
   selfName: ""
-  targets:
-    - http://vault-0.vault-internal:8200
-    - http://vault-1.vault-internal:8200
-    - http://vault-2.vault-internal:8200
   fallback:
     addr: ""
     k8sAuthPath: "auth/kubernetes"
@@ -28,6 +23,26 @@ recovery:
     secretPath: ""
     tlsSkipVerify: false
     cidr: ""
+
+  # manualJob: operátori fan-out recovery eszköz.
+  # Csak akkor futtatható, ha a fallback Vault már elérhető
+  # (az első Vault kézi feloldása után).
+  # Trigger: helm upgrade --set recovery.manualJob.triggerId=$(date +%Y%m%d%H%M%S)
+  manualJob:
+    triggerId: ""
+    targets:
+      - http://vault-0.vault-internal:8200
+      - http://vault-1.vault-internal:8200
+      - http://vault-2.vault-internal:8200
+    keyThreshold: 3
+
+  # podUnseal: pod lifecycle assisted-unseal mechanizmus.
+  # A recovery-prep initContainer fut minden pod-induláskor,
+  # és tokent készít elő a postStart számára.
+  # Független a manualJob triggertől.
+  podUnseal:
+    enabled: true
+
   rekey:
     enabled: false
     confirm: false

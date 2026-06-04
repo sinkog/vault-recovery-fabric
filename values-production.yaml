@@ -5,7 +5,8 @@ networkPolicy:
   enabled: true
 
 recovery:
-  triggerId: ""
+  manualJob:
+    triggerId: ""
   selfName: ""
   fallback:
     addr: ""

@@ -1,4 +1,4 @@
-{{- if and .Values.recovery.triggerId .Values.networkPolicy.enabled (not .Values.recovery.fallback.cidr) }}
+{{- if and .Values.recovery.manualJob.triggerId .Values.networkPolicy.enabled (not .Values.recovery.fallback.cidr) }}
 {{- fail "Set recovery.fallback.cidr to restrict NetworkPolicy egress when triggering recovery with networkPolicy.enabled=true" }}
 {{- end }}
 {{- if .Values.networkPolicy.enabled }}
@@ -74,7 +74,7 @@ spec:
     - port: 8200
       protocol: TCP
   {{- end }}
-{{- if .Values.recovery.triggerId }}
+{{- if .Values.recovery.manualJob.triggerId }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

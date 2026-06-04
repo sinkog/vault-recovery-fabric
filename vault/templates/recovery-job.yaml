@@ -1,8 +1,8 @@
-{{- if .Values.recovery.triggerId }}
+{{- if .Values.recovery.manualJob.triggerId }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: vault-recovery-{{ .Values.recovery.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }}
+  name: vault-recovery-{{ .Values.recovery.manualJob.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }}
   annotations:
     "helm.sh/hook": post-upgrade,post-install
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
@@ -69,14 +69,14 @@ spec:
           rm -f /recovery/vault-token
 
           KEY_COUNT=$(grep -c . /recovery/unseal-keys 2>/dev/null || echo 0)
-          if [ "$KEY_COUNT" -lt {{ .Values.recovery.rekey.keyThreshold }} ]; then
-            echo "Recovery material has $KEY_COUNT key(s), need at least {{ .Values.recovery.rekey.keyThreshold }} (threshold). Aborting."
+          if [ "$KEY_COUNT" -lt {{ .Values.recovery.manualJob.keyThreshold }} ]; then
+            echo "Recovery material has $KEY_COUNT key(s), need at least {{ .Values.recovery.manualJob.keyThreshold }} (threshold). Aborting."
             rm -f /recovery/unseal-keys
             exit 1
           fi
           echo "Recovery material: $KEY_COUNT key(s) available"
 
-          TARGETS="{{ join " " .Values.recovery.targets }}"
+          TARGETS="{{ join " " .Values.recovery.manualJob.targets }}"
           UNSEALED_COUNT=0
 
           for TARGET_API in $TARGETS; do

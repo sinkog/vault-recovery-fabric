@@ -5,7 +5,8 @@ networkPolicy:
   enabled: true
 
 recovery:
-  triggerId: ""
+  manualJob:
+    triggerId: ""
   selfName: "vault-a"
   fallback:
     addr: "https://vault.kube-vault-b.example.com:8200"

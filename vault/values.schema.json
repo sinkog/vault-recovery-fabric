@@ -96,7 +96,11 @@
         }
       },
       "if": {
-        "properties": { "triggerId": { "minLength": 1 } }
+        "properties": {
+          "manualJob": {
+            "properties": { "triggerId": { "minLength": 1 } }
+          }
+        }
       },
       "then": {
         "properties": {

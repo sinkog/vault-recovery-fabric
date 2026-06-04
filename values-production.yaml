@@ -11,7 +11,7 @@ recovery:
     addr: ""
     k8sAuthPath: "auth/kubernetes"
     vaultRole: "vault-recovery-unseal"
-    secretPath: "secret/vault/unseal-keys"
+    secretPath: ""
     tlsSkipVerify: false
     cidr: ""  # Required in production: set to fallback Vault CIDR to restrict NetworkPolicy egress
   rekey:

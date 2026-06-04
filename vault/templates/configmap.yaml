@@ -1,24 +1,25 @@
 {{- if ne .Release.Name "vault" }}
 {{- fail (printf "vault-recovery-fabric requires Helm release name 'vault' (got: '%s'). Service names vault-active and vault-0.vault-internal are hardcoded for release name 'vault'." .Release.Name) }}
 {{- end }}
+{{- $localPath := trimPrefix "secret/" (include "vrf.localSecretPath" .) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vault-postconfig
 data:
   vault-unseal.hcl: |
-    # KV v2: policy must reference secret/data/<path>, not secret/<path>
-    path "secret/data/vault/unseal-keys" {
+    # KV v2: policy uses secret/data/<path> prefix (not secret/<path>)
+    path "secret/data/{{ $localPath }}" {
         capabilities = ["read"]
     }
-    path "secret/metadata/vault/unseal-keys" {
+    path "secret/metadata/{{ $localPath }}" {
         capabilities = ["read"]
     }
   vault-rekey.hcl: |
-    path "secret/data/vault/unseal-keys" {
+    path "secret/data/{{ $localPath }}" {
         capabilities = ["read", "create", "update"]
     }
-    path "secret/metadata/vault/unseal-keys" {
+    path "secret/metadata/{{ $localPath }}" {
         capabilities = ["read", "list"]
     }
     path "sys/rekey/*" {

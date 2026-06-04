@@ -16,7 +16,14 @@ secret/recovery/{{ .Values.recovery.selfName }}/unseal-keys
 
 {{/*
 Resolve the local secretPath for unseal keys (where this cluster stores them).
-Derived from selfName if not set.
+Derived from selfName if set.
+
+NOTE: the postStart auto-unseal hook in vault.server.postStart uses the LEGACY path
+(secret/vault/unseal-keys) because values.yaml shell blocks cannot use Helm helpers.
+In mesh mode (selfName set), bootstrap.storeUnsealKeys should be false and
+postStart will log a warning — the recovery Job handles unsealing instead.
+In lab mode (selfName empty, storeUnsealKeys=true), the legacy path is used by both
+the bootstrap job and postStart, so auto-unseal works correctly.
 */}}
 {{- define "vrf.localSecretPath" -}}
 {{- if .Values.recovery.selfName -}}

@@ -1,4 +1,6 @@
 {{- if .Values.recovery.selfName }}
+{{- $fbPath := include "vrf.fallbackSecretPath" . }}
+{{- $fbDataPath := trimPrefix "secret/" $fbPath }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -23,10 +25,10 @@ data:
        The CLI uses secret/<path>, but policies must reference the API path.
 
        vault policy write {{ .Values.recovery.selfName }}-recovery - <<EOF
-       path "secret/data/{{ trimPrefix "secret/" .Values.recovery.fallback.secretPath }}" {
+       path "secret/data/{{ $fbDataPath }}" {
          capabilities = ["read"]
        }
-       path "secret/metadata/{{ trimPrefix "secret/" .Values.recovery.fallback.secretPath }}" {
+       path "secret/metadata/{{ $fbDataPath }}" {
          capabilities = ["read"]
        }
        EOF
@@ -45,7 +47,7 @@ data:
        WARNING: raw key storage is for local testing only.
        Do not use in production — use the encrypted flow below.
 
-       vault kv put {{ .Values.recovery.fallback.secretPath }} \
+       vault kv put {{ $fbPath }} \
          contents=@/tmp/vault-unseal.txt
 
     4b. [PRODUCTION] Store encrypted recovery material on the fallback Vault:
@@ -67,10 +69,13 @@ data:
        # LOCAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys)
 
        # Encrypt and write to FALLBACK Vault
+       # Write passphrase to temp file to avoid shell argument exposure
+       echo "$PASSPHRASE" > /tmp/passphrase.tmp
        ENCRYPTED=$(echo "$LOCAL_KEYS" \
-         | openssl enc -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" | openssl base64 -A)
+         | openssl enc -aes-256-cbc -pbkdf2 -pass file:/tmp/passphrase.tmp | openssl base64 -A)
+       rm -f /tmp/passphrase.tmp
        VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-VAULT-ADDR>" }} \
-         vault kv put {{ .Values.recovery.fallback.secretPath }} contents="$ENCRYPTED"
+         vault kv put {{ $fbPath }} contents="$ENCRYPTED"
 
     5. Trigger recovery:
 

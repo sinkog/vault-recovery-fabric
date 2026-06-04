@@ -42,7 +42,7 @@ vault:
   server:
     serviceAccount:
       createSecret: false
-    initContainers:
+    extraInitContainers:
       - name: recovery-prep
         image: hashicorp/vault:1.21.2
         imagePullPolicy: IfNotPresent
@@ -109,8 +109,10 @@ vault:
         exit 0
       fi
 
+      export VAULT_ADDR=http://localhost:8200
+
       if [[ "$HOSTNAME" != "vault-0" ]]; then
-        vault operator raft join http://vault-active:8200 || true
+        while ! vault operator raft join http://vault-active:8200; do sleep 3; done
       fi
 
       echo "$UNSEAL_KEYS" | while IFS= read -r key; do

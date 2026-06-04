@@ -29,5 +29,33 @@ vault:
   server:
     ha:
       enabled: true
-      raft:
-        enabled: true
+    volumes:
+      - name: recovery-prep
+        emptyDir:
+          medium: Memory
+      - name: recovery-init-script
+        configMap:
+          name: vault-recovery-init-script
+          defaultMode: 0755
+      - name: vault-recovery-passphrase
+        secret:
+          secretName: vault-recovery-passphrase
+          items:
+            - key: passphrase
+              path: passphrase
+    volumeMounts:
+      - name: recovery-prep
+        mountPath: /vault/recovery-prep
+      - name: vault-recovery-passphrase
+        mountPath: /vault/recovery-passphrase
+        readOnly: true
+    extraInitContainers:
+      - name: recovery-prep
+        image: hashicorp/vault:1.21.2
+        imagePullPolicy: IfNotPresent
+        command: [sh, /vault/scripts/recovery-init.sh]
+        volumeMounts:
+          - name: recovery-prep
+            mountPath: /vault/recovery-prep
+          - name: recovery-init-script
+            mountPath: /vault/scripts

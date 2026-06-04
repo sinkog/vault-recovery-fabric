@@ -36,11 +36,13 @@ data:
     3. Create a Kubernetes auth role on the fallback Vault:
 
        vault write auth/kubernetes/role/{{ .Values.recovery.fallback.vaultRole }} \
-         bound_service_account_names=vault-recovery \
+         bound_service_account_names=vault-recovery,vault \
          bound_service_account_namespaces={{ .Release.Namespace }} \
          policies={{ .Values.recovery.selfName }}-recovery \
          ttl=5m \
          token_num_uses=2
+       NOTE: bound_service_account_names includes both 'vault-recovery' (recovery Job)
+             and 'vault' (pod-level postStart via initContainer recovery-prep)
 
     4a. [LAB ONLY] Store raw unseal keys on the fallback Vault:
 

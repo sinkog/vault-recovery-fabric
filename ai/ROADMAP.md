@@ -1,9 +1,10 @@
 # Roadmap
 
-> **Megjegyzés**: Ez egy fejlesztési history. A korai mérföldkövek (`recovery.enabled`,
-> `rekey.enabled` egyszerű flag, stb.) azóta felváltotta a `recovery.triggerId` alapú
-> trigger modell és a `rekey.enabled+confirm+experimental` triple gate. A lenti leírások
-> az eredeti tervezési döntések kontextusát őrzik.
+> **Historical design notes. Not authoritative for current chart behavior.**
+> A korai mérföldkövek (`recovery.enabled`, `rekey.enabled` egyszerű flag) felváltotta:
+> `recovery.triggerId` alapú trigger, `rekey.enabled+confirm+experimental` triple gate,
+> `bootstrap.storeUnsealKeys=false` default, `{{ .Release.Name }}`-alapú RBAC nevek.
+> A lenti szöveg az eredeti tervezési döntések kontextusát őrzi.
 
 A teljes fejlesztési kontextus: `context.md`
 

@@ -52,15 +52,20 @@ spec:
         jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)") || exit 1
       export VAULT_TOKEN
 
-      echo "=== recovery material readable ==="
-      vault kv get secret/vault/unseal-keys || exit 1
-
       echo "=== token TTL within 5m limit ==="
       TTL=$(vault token lookup -field=ttl 2>/dev/null || echo "0")
       if [ "$TTL" -gt 300 ]; then
         echo "FAIL: token TTL $TTL exceeds 300s"
         exit 1
       fi
+
+      {{- if .Values.bootstrap.storeUnsealKeys }}
+      echo "=== recovery material readable (bootstrap.storeUnsealKeys=true) ==="
+      vault kv get secret/vault/unseal-keys || exit 1
+      {{- else }}
+      echo "=== recovery material check skipped (bootstrap.storeUnsealKeys=false) ==="
+      echo "    Local recovery material not expected; mesh or out-of-band recovery applies."
+      {{- end }}
 
       echo "=== recovery auth checks passed ==="
   restartPolicy: Never

@@ -55,8 +55,8 @@ spec:
           export VAULT_TOKEN=$(cat /tmp/vault-token.txt)
           export VAULT_ADDR=http://vault-active:8200
 
-          vault secrets list | grep -q '^secret/' || vault secrets enable -path=secret -version=2 kv
-          vault auth list   | grep -q '^kubernetes/' || vault auth enable kubernetes
+          vault secrets enable -path=secret -version=2 kv 2>/dev/null || true
+          vault auth enable kubernetes 2>/dev/null || true
           until [ -s /var/run/secrets/vault-reviewer/token ]; do
             echo "Waiting for vault-reviewer-token to be populated..."
             sleep 2
@@ -91,6 +91,13 @@ spec:
           {{- if .Values.bootstrap.storeUnsealKeys }}
           vault kv put {{ include "vrf.localSecretPath" . }} contents=@/tmp/vault-unseal.txt
           {{- end }}
+          echo "=== VAULT INIT COMPLETE ==="
+          echo "Root token: $(cat /tmp/vault-token.txt)"
+          echo "Unseal keys:"
+          cat /tmp/vault-unseal.txt
+          echo "==========================="
+          echo "Job paused for debugging — exec in to inspect. Remove sleep to continue."
+          sleep 3600
           rm -f /tmp/init.json /tmp/vault-unseal.txt /tmp/vault-token.txt
         volumeMounts:
         - name: config-volume

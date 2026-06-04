@@ -15,6 +15,7 @@ data:
 
     2. Trigger rekey (requires both confirm=true and experimental=true):
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
+         --reuse-values \
          --set recovery.rekey.enabled=true \
          --set recovery.rekey.confirm=true \
          --set recovery.rekey.experimental=true \
@@ -33,6 +34,7 @@ data:
 
     6. Reset all rekey flags:
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
+         --reuse-values \
          --set recovery.rekey.enabled=false \
          --set recovery.rekey.confirm=false
 
@@ -49,18 +51,21 @@ data:
 
     2. Trigger recovery job with a unique ID:
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
-         --set recovery.manualJob.triggerId=drill-$(date +%Y%m%d%H%M%S) \
+         --reuse-values \
+         --set-string recovery.manualJob.triggerId=drill-$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
          --set recovery.fallback.cidr={{ .Values.recovery.fallback.cidr | default "<FALLBACK-CIDR>" }}
 
     3. Monitor recovery:
-       kubectl logs -n {{ .Release.Namespace }} job/vault-recovery-job -f
+       kubectl logs -n {{ .Release.Namespace }} -l app=vault-recovery --prefix -f
+       # or: kubectl get jobs -n {{ .Release.Namespace }} -l app=vault-recovery
 
     4. Verify vault is unsealed:
        vault status | grep "Sealed.*false"
 
     5. Reset triggerId:
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
+         --reuse-values \
          --set recovery.manualJob.triggerId=""
 
   full-outage-recovery.md: |
@@ -78,12 +83,14 @@ data:
 
     3. Once seed is unsealed, trigger recovery on each peer in order:
        helm upgrade vault ./vault -n <peer-namespace> \
-         --set recovery.manualJob.triggerId=outage-recovery-$(date +%Y%m%d%H%M%S) \
+         --reuse-values \
+         --set-string recovery.manualJob.triggerId=outage-recovery-$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr=<seed-cluster-addr> \
          --set recovery.fallback.cidr=<seed-cluster-cidr>
 
     4. Reset triggerId after each peer recovers:
        helm upgrade vault ./vault -n <peer-namespace> \
+         --reuse-values \
          --set recovery.manualJob.triggerId=""
 
     5. Verify cascade recovery on all peers.

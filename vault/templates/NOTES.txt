@@ -15,14 +15,14 @@ Using a different release name will break the recovery flow.
 
 Recovery job triggered: vault-recovery-{{ .Values.recovery.manualJob.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }}
 Monitor: kubectl logs -n {{ .Release.Namespace }} job/vault-recovery-{{ .Values.recovery.manualJob.triggerId | lower | replace "_" "-" | replace "." "-" | trunc 47 | trimSuffix "-" }} -f
-Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --set recovery.manualJob.triggerId=""
+Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --reuse-values --set-string recovery.manualJob.triggerId=""
 {{- end }}
 
 {{- if and .Values.recovery.rekey.enabled .Values.recovery.rekey.confirm }}
 
 Rekey job triggered: vault-rekey-job
 Monitor: kubectl logs -n {{ .Release.Namespace }} job/vault-rekey-job -f
-Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --set recovery.rekey.enabled=false --set recovery.rekey.confirm=false
+Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --reuse-values --set recovery.rekey.enabled=false --set recovery.rekey.confirm=false
 {{- end }}
 
 Drill procedures: kubectl get configmap vault-recovery-drill -n {{ .Release.Namespace }} -o jsonpath='{.data}'

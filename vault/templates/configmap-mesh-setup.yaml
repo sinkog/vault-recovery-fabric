@@ -82,12 +82,14 @@ data:
     5. Trigger recovery:
 
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
-         --set recovery.manualJob.triggerId=$(date +%Y%m%d%H%M%S) \
+         --reuse-values \
+         --set-string recovery.manualJob.triggerId=$(date +%Y%m%d%H%M%S) \
          --set recovery.fallback.addr={{ .Values.recovery.fallback.addr | default "<FALLBACK-VAULT-ADDR>" }} \
          --set recovery.fallback.cidr={{ .Values.recovery.fallback.cidr | default "<FALLBACK-VAULT-CIDR>" }}
 
     6. Reset after recovery:
 
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
+         --reuse-values \
          --set recovery.manualJob.triggerId=""
 {{- end }}

@@ -36,12 +36,9 @@ recovery:
       - http://vault-2.vault-internal:8200
     keyThreshold: 3
 
-  # podUnseal: pod lifecycle assisted-unseal mechanizmus.
-  # A recovery-prep initContainer fut minden pod-induláskor,
-  # és tokent készít elő a postStart számára.
-  # Független a manualJob triggertől.
-  podUnseal:
-    enabled: true
+  # podUnseal: pod lifecycle assisted-unseal via recovery-prep initContainer + postStart.
+  # Enabled when extraInitContainers are defined (values-mesh.yaml / values-production.yaml).
+  # No separate flag — disable by removing extraInitContainers from your values overlay.
 
   rekey:
     enabled: false
@@ -51,7 +48,7 @@ recovery:
     keyShares: 5
     keyThreshold: 3
   encryption:
-    enabled: true
+    enabled: false
     passphraseSecret: "vault-recovery-passphrase"
     autoGeneratePassphrase: false
 
@@ -63,19 +60,8 @@ vault:
       repository: "hashicorp/vault"
       tag: "1.21.2"
       pullPolicy: IfNotPresent
-    volumes:
-      - name: vault-recovery-passphrase
-        secret:
-          secretName: vault-recovery-passphrase
-          items:
-            - key: passphrase
-              path: passphrase
-    volumeMounts:
-      - name: vault-recovery-passphrase
-        mountPath: /vault/recovery-passphrase
-        readOnly: true
-    # extraInitContainers for podUnseal are defined in values-mesh.yaml / values-production.yaml.
-    # Base values intentionally omit them so podUnseal.enabled=false actually works.
+    # extraInitContainers, volumes, volumeMounts for podUnseal and encryption are defined
+    # in values-mesh.yaml and values-production.yaml where these features are enabled.
     affinity: ""
     ha:
       enabled: true

@@ -1,4 +1,3 @@
-{{- if .Values.recovery.podUnseal.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -67,4 +66,3 @@ data:
 
     unset VAULT_TOKEN VAULT_SKIP_VERIFY
     echo "Token prepared from ${VAULT_URL}"
-{{- end }}

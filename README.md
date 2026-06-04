@@ -135,19 +135,24 @@ Each recovery is an explicit event identified by a unique `triggerId`:
 
 ```bash
 helm upgrade vault ./vault -n kube-vault \
-  --set recovery.manualJob.triggerId=$(date +%Y%m%d%H%M%S) \
+  --reuse-values \
+  --set-string recovery.manualJob.triggerId=recovery-$(date +%Y%m%d%H%M%S) \
   --set recovery.fallback.addr=https://vault-b.example.com:8200 \
   --set recovery.fallback.cidr=10.10.20.0/24
 ```
 
+> **`--reuse-values` is required** to preserve your existing mesh/production configuration
+> (selfName, encryption settings, etc.) while only changing the trigger.
+> Without it, Helm will reset values to chart defaults.
+>
 > `recovery.fallback.cidr` is required when `networkPolicy.enabled=true` (default).
-> Set it to the CIDR of your fallback Vault cluster.
 
 After recovery completes, reset:
 
 ```bash
 helm upgrade vault ./vault -n kube-vault \
-  --set recovery.manualJob.triggerId=""
+  --reuse-values \
+  --set-string recovery.manualJob.triggerId=""
 ```
 
 ## Key Rotation (Rekey)
@@ -227,8 +232,9 @@ access to the K8s API of the target cluster.
 | `recovery.rekey.confirm` | `false` | Must be `true` to trigger rekey job |
 | `recovery.rekey.keyShares` | `5` | Number of new key shares |
 | `recovery.rekey.keyThreshold` | `3` | Unseal threshold |
-| `recovery.encryption.enabled` | `false` | Encrypt recovery material with AES-256 (**required in production**) |
-| `recovery.encryption.passphraseSecret` | `""` | K8s Secret name containing `passphrase` key |
+| `recovery.encryption.enabled` | `false` | Encrypt recovery material with AES-256 (enable in production/mesh) |
+| `recovery.encryption.passphraseSecret` | `vault-recovery-passphrase` | K8s Secret name containing `passphrase` key |
+| `recovery.encryption.autoGeneratePassphrase` | `false` | Auto-generate passphrase Secret (lab only; production: create manually) |
 
 > **Lab vs production**: `bootstrap.storeUnsealKeys=true` and `recovery.encryption.enabled=false`
 > are acceptable for local testing only. Raw recovery material storage and unencrypted

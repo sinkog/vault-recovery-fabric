@@ -40,9 +40,9 @@ spec:
           vault operator init \
             -key-shares={{ .Values.bootstrap.keyShares }} \
             -key-threshold={{ .Values.bootstrap.keyThreshold }} \
-            > /tmp/keys.txt
-          grep Unseal /tmp/keys.txt | awk '{ print $4 }' > /tmp/vault-unseal.txt
-          grep Token  /tmp/keys.txt | awk '{ print $4 }' > /tmp/vault-token.txt
+            -format=json > /tmp/init.json
+          awk '/unseal_keys_b64/{f=1;next} f&&/\]/{f=0} f{gsub(/[" ,]/,"");if(length>0)print}' /tmp/init.json > /tmp/vault-unseal.txt
+          awk -F'"' '/root_token/{print $4}' /tmp/init.json > /tmp/vault-token.txt
 
           while IFS= read -r key; do
             printf '{"key":"%s"}' "$key" | \
@@ -85,7 +85,7 @@ spec:
           {{- if .Values.bootstrap.storeUnsealKeys }}
           vault kv put {{ include "vrf.localSecretPath" . }} contents=@/tmp/vault-unseal.txt
           {{- end }}
-          rm -f /tmp/keys.txt /tmp/vault-unseal.txt /tmp/vault-token.txt
+          rm -f /tmp/init.json /tmp/vault-unseal.txt /tmp/vault-token.txt
         volumeMounts:
         - name: config-volume
           mountPath: /mnt/config

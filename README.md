@@ -250,10 +250,10 @@ The path where unseal keys are stored depends on `recovery.selfName`:
 | Lab / legacy | `""` (empty) | `secret/vault/unseal-keys` | explicit `fallback.secretPath` |
 | Mesh | `vault-a` | `secret/recovery/vault-a/unseal-keys` | `secret/recovery/vault-a/unseal-keys` |
 
-> **Note**: the postStart auto-unseal hook always reads from the legacy path
-> (`secret/vault/unseal-keys`). In mesh mode (`selfName` set), set
-> `bootstrap.storeUnsealKeys=false` — postStart will log a warning and the
-> recovery Job handles unsealing from the fallback Vault instead.
+> **Note**: the postStart script reads the secret path written by the `recovery-prep`
+> initContainer (derived from `vrf.localSecretPath` or `vrf.fallbackSecretPath`).
+> In lab mode (`selfName` empty, `storeUnsealKeys=true`): local path `secret/vault/unseal-keys`.
+> In mesh mode (`selfName` set, `storeUnsealKeys=false`): fallback path `secret/recovery/<selfName>/unseal-keys`.
 
 ## Bootstrap root token
 

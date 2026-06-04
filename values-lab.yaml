@@ -9,6 +9,7 @@ networkPolicy:
 recovery:
   manualJob:
     triggerId: ""
+    keyThreshold: 1
   rekey:
     enabled: false
     confirm: false

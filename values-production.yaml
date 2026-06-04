@@ -41,6 +41,10 @@ vault:
         configMap:
           name: vault-recovery-init-script
           defaultMode: 0755
+      - name: vault-poststart-script
+        configMap:
+          name: vault-poststart-script
+          defaultMode: 0755
       - name: vault-recovery-passphrase
         secret:
           secretName: vault-recovery-passphrase
@@ -50,6 +54,9 @@ vault:
     volumeMounts:
       - name: recovery-prep
         mountPath: /vault/recovery-prep
+      - name: vault-poststart-script
+        mountPath: /vault/scripts/poststart
+        readOnly: true
       - name: vault-recovery-passphrase
         mountPath: /vault/recovery-passphrase
         readOnly: true

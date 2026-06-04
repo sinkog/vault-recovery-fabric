@@ -62,7 +62,7 @@ data:
       export VAULT_ADDR=http://localhost:8200
 
       if [ "$SKIP_RAFT" != "true" ] && [ "$TARGET_API" = "http://localhost:8200" ] && \
-         [[ "$HOSTNAME" != "vault-0" ]]; then
+         [ "$HOSTNAME" != "vault-0" ]; then
         RAFT_TRIES=0
         until vault operator raft join http://vault-active:8200 || [ $RAFT_TRIES -ge 20 ]; do
           RAFT_TRIES=$((RAFT_TRIES + 1))

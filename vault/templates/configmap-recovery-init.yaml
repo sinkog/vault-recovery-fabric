@@ -22,6 +22,7 @@ data:
 
     # Loop until we have a token (or vault-active is confirmed available)
     # SKIP_ACTIVE_CHECK=true: skip local vault-active check (used by recovery-job)
+    TOKEN_FAIL=0
     until [ -s ${PREP_DIR}/vault-token ]; do
       VAULT_URL=""
 
@@ -63,10 +64,16 @@ data:
         jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
 
       if [ -z "$VAULT_TOKEN" ]; then
-        echo "Token request failed from ${VAULT_URL}, retrying in 5s..."
+        TOKEN_FAIL=$((TOKEN_FAIL + 1))
+        echo "Token request failed from ${VAULT_URL} (attempt ${TOKEN_FAIL}) retrying in 5s..."
+        if [ "$TOKEN_FAIL" -ge 10 ]; then
+          echo "Token request failed 10 times — exiting, pod will start sealed"
+          exit 0
+        fi
         sleep 5
         continue
       fi
+      TOKEN_FAIL=0
 
       echo "$VAULT_URL"    > ${PREP_DIR}/vault-url
       echo "$VAULT_TOKEN"  > ${PREP_DIR}/vault-token

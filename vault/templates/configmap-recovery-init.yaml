@@ -24,36 +24,44 @@ data:
       exit 0
     fi
 
-    # No unsealed active node — try fallback Vault
-    FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-      "${FALLBACK_API}/v1/sys/health" 2>/dev/null || echo "000")
-
-    if ! echo "$FB_CODE" | grep -qE '^[2345][0-9][0-9]$'; then
-      echo "Fallback vault not reachable (HTTP ${FB_CODE})"
-      exit 0
-    fi
-
+    # No unsealed active node — try any reachable Vault that can provide a token.
+    # Try the configured fallback Vault first, then any other target that responds.
     {{- if .Values.recovery.fallback.tlsSkipVerify }}
     export VAULT_SKIP_VERIFY=true
     {{- end }}
-    export VAULT_ADDR=$FALLBACK_API
 
-    # Get single-use short-lived token from fallback Vault via K8s auth
-    VAULT_TOKEN=$(vault write -field=token \
-      {{ .Values.recovery.fallback.k8sAuthPath }}/login \
-      role={{ .Values.recovery.fallback.vaultRole }} \
-      jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+    VAULT_TOKEN=""
+    ACTIVE_FALLBACK=""
+
+    for CANDIDATE in "$FALLBACK_API" {{ join " " .Values.recovery.targets }}; do
+      CAND_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        "${CANDIDATE}/v1/sys/health" 2>/dev/null || echo "000")
+      if echo "$CAND_CODE" | grep -qE '^(200|429)$'; then
+        export VAULT_ADDR=$CANDIDATE
+        TOK=$(vault write -field=token \
+          {{ .Values.recovery.fallback.k8sAuthPath }}/login \
+          role={{ .Values.recovery.fallback.vaultRole }} \
+          jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+        if [ -n "$TOK" ]; then
+          VAULT_TOKEN="$TOK"
+          ACTIVE_FALLBACK="$CANDIDATE"
+          echo "Token obtained from: ${CANDIDATE}"
+          break
+        fi
+      fi
+    done
 
     if [ -z "$VAULT_TOKEN" ]; then
-      echo "Failed to obtain fallback Vault token"
+      echo "No reachable Vault found to obtain recovery token"
       exit 0
     fi
+    export VAULT_ADDR=$ACTIVE_FALLBACK
 
     # Write token and connection info to Memory emptyDir.
     # The main container (postStart) will use these to fetch unseal keys directly.
     # Unseal keys never touch this directory.
-    echo "$VAULT_TOKEN"   > ${PREP_DIR}/vault-token
-    echo "$FALLBACK_API"  > ${PREP_DIR}/fallback-addr
+    echo "$VAULT_TOKEN"      > ${PREP_DIR}/vault-token
+    echo "$ACTIVE_FALLBACK"  > ${PREP_DIR}/fallback-addr
     echo "{{ include "vrf.fallbackSecretPath" . }}" > ${PREP_DIR}/secret-path
     {{- if .Values.recovery.encryption.enabled }}
     echo "true"           > ${PREP_DIR}/encrypted

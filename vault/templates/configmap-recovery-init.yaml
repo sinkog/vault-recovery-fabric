@@ -33,8 +33,10 @@ data:
     VAULT_TOKEN=""
     ACTIVE_FALLBACK=""
 
-    # Priority: local vault service → local pod addresses → external fallback
-    for CANDIDATE in "http://vault:8200" {{ join " " .Values.recovery.targets }} "$FALLBACK_API"; do
+    # vault-active is the authoritative unsealed check (already done above).
+    # If it had no endpoints, no local pod is unsealed — try individual pods
+    # (in case one just unsealed but active service hasn't caught up), then external fallback.
+    for CANDIDATE in {{ join " " .Values.recovery.targets }} "$FALLBACK_API"; do
       CAND_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
         "${CANDIDATE}/v1/sys/health" 2>/dev/null || echo "000")
       if echo "$CAND_CODE" | grep -qE '^(200|429)$'; then

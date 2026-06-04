@@ -60,14 +60,14 @@ blokk adja, Consul semmilyen szerepet nem tölt be.
 HTTP health check → 501 = not initialized → vault operator init
 → vault-0 unseal (curl /v1/sys/unseal)
 → secret/ KV v2 mount enable (idempotens)
-→ Kubernetes auth enable + config (vault-reviewer-token használva)
+→ Kubernetes auth enable + config (token_reviewer_jwt elhagyva — Vault 1.21+ projected token)
 → policy write (vault-unseal, vault-rekey)
 → K8s auth role write (vault-unseal, vault-recovery-unseal, vault-rekey)
 → optional: secret/vault/unseal-keys (csak ha bootstrap.storeUnsealKeys=true)
 → tmp fájlok törlése (/tmp/keys.txt, /tmp/vault-unseal.txt, /tmp/vault-token.txt)
 ```
 
-**Jelenlegi állapot:** idempotens, root token nem persistálódik, reviewer token long-lived SA Secret-ből jön
+**Jelenlegi állapot:** idempotens, root token nem persistálódik, token_reviewer_jwt elhagyva (Vault 1.21+ vault SA projected tokenjét használja TokenReview-hoz)
 
 ### 2. fázis — Auto-unseal (postStart, minden újrainduláskor)
 

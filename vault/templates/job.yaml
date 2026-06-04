@@ -55,7 +55,6 @@ spec:
           vault secrets list | grep -q '^secret/' || vault secrets enable -path=secret -version=2 kv
           vault auth list   | grep -q '^kubernetes/' || vault auth enable kubernetes
           vault write auth/kubernetes/config \
-            token_reviewer_jwt="$(cat /var/run/secrets/vault-reviewer/token)" \
             kubernetes_host=https://${KUBERNETES_PORT_443_TCP_ADDR}:443 \
             kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
@@ -87,15 +86,9 @@ spec:
         volumeMounts:
         - name: config-volume
           mountPath: /mnt/config
-        - name: reviewer-token
-          mountPath: /var/run/secrets/vault-reviewer
-          readOnly: true
       restartPolicy: Never
       volumes:
       - name: config-volume
         configMap:
           name: vault-postconfig
-      - name: reviewer-token
-        secret:
-          secretName: vault-reviewer-token
   backoffLimit: 4

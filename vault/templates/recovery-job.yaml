@@ -20,126 +20,35 @@ spec:
       - name: recovery-auth
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["sh", "-c"]
-        args:
-        - |
-          FALLBACK_API={{ .Values.recovery.fallback.addr }}
-          {{- if .Values.recovery.fallback.tlsSkipVerify }}
-          export VAULT_SKIP_VERIFY=true
-          {{- end }}
-          export VAULT_ADDR=$FALLBACK_API
-
-          # Loop until a valid token is obtained
-          until [ -s /recovery/vault-token ]; do
-            FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              "${FALLBACK_API}/v1/sys/health" 2>/dev/null || echo "000")
-
-            if echo "$FB_CODE" | grep -qE '^(200|429)$'; then
-              VAULT_TOKEN=$(vault write -field=token \
-                {{ .Values.recovery.fallback.k8sAuthPath }}/login \
-                role={{ .Values.recovery.fallback.vaultRole }} \
-                jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
-
-              if [ -n "$VAULT_TOKEN" ]; then
-                echo "$VAULT_TOKEN" > /recovery/vault-token
-                unset VAULT_TOKEN
-                break
-              fi
-              echo "Token request failed, retrying in 5s..."
-            else
-              echo "Fallback vault not ready (HTTP ${FB_CODE}), retrying in 5s..."
-            fi
-            sleep 5
-          done
+        command: [sh, /vault/scripts/recovery-init/recovery-init.sh]
+        env:
+          - name: SKIP_ACTIVE_CHECK
+            value: "true"
         volumeMounts:
-        - name: recovery-data
-          mountPath: /recovery
+          - name: recovery-data
+            mountPath: /vault/recovery-prep
+          - name: recovery-init-script
+            mountPath: /vault/scripts/recovery-init
       containers:
       - name: recovery-unseal
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["sh", "-c"]
-        args:
-        - |
-          export VAULT_ADDR={{ .Values.recovery.fallback.addr }}
-          {{- if .Values.recovery.fallback.tlsSkipVerify }}
-          export VAULT_SKIP_VERIFY=true
-          {{- end }}
-          export VAULT_TOKEN=$(cat /recovery/vault-token)
-
-          {{- if .Values.recovery.encryption.enabled }}
-          vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
-            | openssl base64 -d \
-            | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/encryption/passphrase \
-            | grep -v '^$' > /recovery/unseal-keys
-          {{- else }}
-          vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
-            | grep -v '^$' > /recovery/unseal-keys
-          {{- end }}
-
-          rm -f /recovery/vault-token
-
-          KEY_COUNT=$(grep -c . /recovery/unseal-keys 2>/dev/null || echo 0)
-          if [ "$KEY_COUNT" -lt {{ .Values.recovery.manualJob.keyThreshold }} ]; then
-            echo "Recovery material has $KEY_COUNT key(s), need at least {{ .Values.recovery.manualJob.keyThreshold }} (threshold). Aborting."
-            rm -f /recovery/unseal-keys
-            exit 1
-          fi
-          echo "Recovery material: $KEY_COUNT key(s) available"
-
-          TARGETS="{{ join " " .Values.recovery.manualJob.targets }}"
-          UNSEALED_COUNT=0
-
-          for TARGET_API in $TARGETS; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              "${TARGET_API}/v1/sys/health" 2>/dev/null || echo "000")
-
-            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "429" ]; then
-              echo "${TARGET_API}: already unsealed (HTTP ${HTTP_CODE}), skipping"
-              UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
-              continue
-            fi
-
-            if [ "$HTTP_CODE" = "000" ]; then
-              echo "${TARGET_API}: unreachable, skipping"
-              continue
-            fi
-
-            if [ "$HTTP_CODE" = "501" ]; then
-              echo "${TARGET_API}: uninitialized (HTTP 501) — refusing to unseal, skipping"
-              continue
-            fi
-
-            echo "${TARGET_API}: sealed (HTTP ${HTTP_CODE}), sending unseal keys"
-            while IFS= read -r key; do
-              printf '{"key":"%s"}' "$key" | \
-                curl -sf --request PUT --data @- \
-                  "${TARGET_API}/v1/sys/unseal" > /dev/null
-            done < /recovery/unseal-keys
-
-            FINAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              "${TARGET_API}/v1/sys/health" 2>/dev/null || echo "000")
-            if [ "$FINAL_CODE" = "200" ] || [ "$FINAL_CODE" = "429" ]; then
-              echo "${TARGET_API}: recovery complete (HTTP ${FINAL_CODE})"
-              UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
-            else
-              echo "${TARGET_API}: recovery failed (HTTP ${FINAL_CODE})"
-            fi
-          done
-
-          rm -f /recovery/unseal-keys
-
-          if [ "$UNSEALED_COUNT" -eq 0 ]; then
-            echo "Recovery failed — no targets successfully unsealed"
-            exit 1
-          fi
-          echo "Recovery complete — ${UNSEALED_COUNT} target(s) unsealed"
+        command: [sh, /vault/scripts/poststart/poststart.sh]
+        env:
+          - name: PREP_DIR
+            value: /vault/recovery-prep
+          - name: UNSEAL_TARGETS
+            value: "{{ join " " .Values.recovery.manualJob.targets }}"
+          - name: SKIP_RAFT_JOIN
+            value: "true"
         volumeMounts:
         - name: recovery-data
-          mountPath: /recovery
+          mountPath: /vault/recovery-prep
+        - name: poststart-script
+          mountPath: /vault/scripts/poststart
         {{- if .Values.recovery.encryption.enabled }}
         - name: encryption-passphrase
-          mountPath: /encryption
+          mountPath: /vault/recovery-passphrase
           readOnly: true
         {{- end }}
       restartPolicy: OnFailure
@@ -147,6 +56,14 @@ spec:
       - name: recovery-data
         emptyDir:
           medium: Memory
+      - name: recovery-init-script
+        configMap:
+          name: vault-recovery-init-script
+          defaultMode: 0755
+      - name: poststart-script
+        configMap:
+          name: vault-poststart-script
+          defaultMode: 0755
       {{- if .Values.recovery.encryption.enabled }}
       - name: encryption-passphrase
         secret:

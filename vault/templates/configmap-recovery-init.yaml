@@ -8,18 +8,25 @@ data:
     PREP_DIR=/vault/recovery-prep
 
     # Loop until we have a token (or vault-active is confirmed available)
+    # SKIP_ACTIVE_CHECK=true: skip local vault-active check (used by recovery-job)
     until [ -s ${PREP_DIR}/vault-token ]; do
+      VAULT_URL=""
 
-      # Step 1: vault-active él-e?
-      ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-        http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
+      if [ "${SKIP_ACTIVE_CHECK:-false}" != "true" ]; then
+        # Step 1: vault-active él-e?
+        ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+          http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
 
-      if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
-        VAULT_URL="http://vault-active:8200"
-        AUTH_ROLE="vault-unseal"
-        AUTH_PATH="auth/kubernetes"
-        SECRET_PATH="{{ include "vrf.localSecretPath" . }}"
-      else
+        if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
+          VAULT_URL="http://vault-active:8200"
+          AUTH_ROLE="vault-unseal"
+          AUTH_PATH="auth/kubernetes"
+          SECRET_PATH="{{ include "vrf.localSecretPath" . }}"
+          # token request below
+        fi
+      fi
+
+      if [ -z "$VAULT_URL" ]; then
         {{- if .Values.recovery.fallback.addr }}
         # Step 2: fallback él-e?
         FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \

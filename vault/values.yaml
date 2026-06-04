@@ -72,39 +72,50 @@ vault:
     - sh
     - -c
     - |
-      if [ -s /vault/recovery-prep/vault-token ]; then
-        SOURCE_ADDR=$(cat /vault/recovery-prep/vault-addr)
-        SECRET_PATH=$(cat /vault/recovery-prep/secret-path)
-        export VAULT_ADDR=$SOURCE_ADDR
-        export VAULT_TOKEN=$(cat /vault/recovery-prep/vault-token)
-        rm -f /vault/recovery-prep/vault-token \
-              /vault/recovery-prep/vault-addr \
-              /vault/recovery-prep/secret-path
+      VAULT_URL=$(cat /vault/recovery-prep/vault-url 2>/dev/null || echo "none")
 
-        if [ -f /vault/recovery-prep/encrypted ]; then
-          UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" \
-            | openssl base64 -d \
-            | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/vault/recovery-passphrase/passphrase \
-            | grep -v '^$')
-          rm -f /vault/recovery-prep/encrypted
-        else
-          UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" | grep -v '^$')
-        fi
-        unset VAULT_TOKEN VAULT_ADDR
-
-        if [ -n "$UNSEAL_KEYS" ]; then
-          if [[ "$HOSTNAME" != "vault-0" ]]; then
-            while ! vault operator raft join http://vault-active:8200; do sleep 3; done
-          fi
-          echo "$UNSEAL_KEYS" | while IFS= read -r key; do
-            printf '{"key":"%s"}' "$key" | \
-              curl -sf --request PUT --data @- \
-                http://localhost:8200/v1/sys/unseal > /dev/null
-          done
-        else
-          echo "No unseal keys retrieved — manual recovery required"
-        fi
-        unset UNSEAL_KEYS
-      else
-        echo "No token from initContainer — manual or mesh recovery required"
+      if [ "$VAULT_URL" = "none" ] || [ -z "$VAULT_URL" ]; then
+        echo "No vault URL from initContainer — staying sealed"
+        exit 0
       fi
+
+      HEALTH=$(curl -s -o /dev/null -w "%{http_code}" \
+        "${VAULT_URL}/v1/sys/health" 2>/dev/null || echo "000")
+      if [ "$HEALTH" != "200" ] && [ "$HEALTH" != "429" ]; then
+        echo "Vault at ${VAULT_URL} no longer reachable (HTTP ${HEALTH}) — staying sealed"
+        exit 0
+      fi
+
+      SECRET_PATH=$(cat /vault/recovery-prep/secret-path)
+      export VAULT_ADDR=$VAULT_URL
+      export VAULT_TOKEN=$(cat /vault/recovery-prep/vault-token)
+      rm -f /vault/recovery-prep/vault-url \
+            /vault/recovery-prep/vault-token \
+            /vault/recovery-prep/secret-path
+
+      if [ -f /vault/recovery-prep/encrypted ]; then
+        UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" \
+          | openssl base64 -d \
+          | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/vault/recovery-passphrase/passphrase \
+          | grep -v '^$' 2>/dev/null)
+        rm -f /vault/recovery-prep/encrypted
+      else
+        UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" 2>/dev/null | grep -v '^$')
+      fi
+      unset VAULT_TOKEN VAULT_ADDR
+
+      if [ -z "$UNSEAL_KEYS" ]; then
+        echo "No unseal keys retrieved — staying sealed"
+        exit 0
+      fi
+
+      if [[ "$HOSTNAME" != "vault-0" ]]; then
+        vault operator raft join http://vault-active:8200 || true
+      fi
+
+      echo "$UNSEAL_KEYS" | while IFS= read -r key; do
+        printf '{"key":"%s"}' "$key" | \
+          curl -sf --request PUT --data @- \
+            http://localhost:8200/v1/sys/unseal > /dev/null
+      done
+      unset UNSEAL_KEYS

@@ -5,63 +5,64 @@ metadata:
 data:
   recovery-init.sh: |
     #!/bin/sh
-    # Recovery preparation initContainer.
-    # Runs before the vault server starts. Gets a short-lived single-use
-    # token from whichever Vault is available (local vault-active first,
-    # then external fallback). PostStart uses this token — it never does
-    # K8s auth itself (cannot, as vault may be sealed at that point).
-
     PREP_DIR=/vault/recovery-prep
-    VAULT_TOKEN=""
-    SOURCE_ADDR=""
-    SECRET_PATH=""
 
-    # 1. Try vault-active (local cluster, already unsealed)
+    # Step 1: vault-active él-e?
     ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
       http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
 
     if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
-      export VAULT_ADDR=http://vault-active:8200
-      VAULT_TOKEN=$(vault write -field=token \
-        auth/kubernetes/login \
-        role=vault-unseal \
-        jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
-      SOURCE_ADDR="http://vault-active:8200"
+      VAULT_URL="http://vault-active:8200"
+      AUTH_ROLE="vault-unseal"
       SECRET_PATH="{{ include "vrf.localSecretPath" . }}"
+    else
+      {{- if .Values.recovery.fallback.addr }}
+      # Step 2: fallback él-e?
+      FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        "{{ .Values.recovery.fallback.addr }}/v1/sys/health" 2>/dev/null || echo "000")
+
+      if [ "$FB_CODE" = "200" ] || [ "$FB_CODE" = "429" ]; then
+        VAULT_URL="{{ .Values.recovery.fallback.addr }}"
+        AUTH_ROLE="{{ .Values.recovery.fallback.vaultRole }}"
+        SECRET_PATH="{{ include "vrf.fallbackSecretPath" . }}"
+        AUTH_PATH="{{ .Values.recovery.fallback.k8sAuthPath }}"
+      else
+        echo "none" > ${PREP_DIR}/vault-url
+        echo "No available Vault found — staying sealed"
+        exit 0
+      fi
+      {{- else }}
+      echo "none" > ${PREP_DIR}/vault-url
+      echo "No fallback configured and vault-active unreachable — staying sealed"
+      exit 0
+      {{- end }}
     fi
 
-    {{- if .Values.recovery.fallback.addr }}
-    # 2. vault-active not available — try external fallback
-    if [ -z "$VAULT_TOKEN" ]; then
-      FALLBACK_API={{ .Values.recovery.fallback.addr }}
-      {{- if .Values.recovery.fallback.tlsSkipVerify }}
-      export VAULT_SKIP_VERIFY=true
-      {{- end }}
-      FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-        "${FALLBACK_API}/v1/sys/health" 2>/dev/null || echo "000")
-      if echo "$FB_CODE" | grep -qE '^(200|429)$'; then
-        export VAULT_ADDR=$FALLBACK_API
-        VAULT_TOKEN=$(vault write -field=token \
-          {{ .Values.recovery.fallback.k8sAuthPath }}/login \
-          role={{ .Values.recovery.fallback.vaultRole }} \
-          jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
-        SOURCE_ADDR="$FALLBACK_API"
-        SECRET_PATH="{{ include "vrf.fallbackSecretPath" . }}"
-      fi
-    fi
+    # Step 3: token kérés a service account nevében
+    export VAULT_ADDR=$VAULT_URL
+    {{- if .Values.recovery.fallback.tlsSkipVerify }}
+    export VAULT_SKIP_VERIFY=true
     {{- end }}
 
+    AUTH_PATH="${AUTH_PATH:-auth/kubernetes}"
+    VAULT_TOKEN=$(vault write -field=token \
+      "${AUTH_PATH}/login" \
+      role="$AUTH_ROLE" \
+      jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+
     if [ -z "$VAULT_TOKEN" ]; then
-      echo "No reachable Vault found — postStart will try local KV directly"
+      echo "none" > ${PREP_DIR}/vault-url
+      echo "Token request failed — staying sealed"
       exit 0
     fi
 
+    # Step 4: mentés emptyDir-be és kilép
+    echo "$VAULT_URL"    > ${PREP_DIR}/vault-url
     echo "$VAULT_TOKEN"  > ${PREP_DIR}/vault-token
-    echo "$SOURCE_ADDR"  > ${PREP_DIR}/vault-addr
     echo "$SECRET_PATH"  > ${PREP_DIR}/secret-path
     {{- if .Values.recovery.encryption.enabled }}
     echo "true"          > ${PREP_DIR}/encrypted
     {{- end }}
 
     unset VAULT_TOKEN VAULT_SKIP_VERIFY
-    echo "Token prepared from ${SOURCE_ADDR} — postStart will use it for unseal"
+    echo "Token prepared from ${VAULT_URL}"

@@ -50,13 +50,3 @@ vault:
       - name: vault-recovery-passphrase
         mountPath: /vault/recovery-passphrase
         readOnly: true
-    extraInitContainers:
-      - name: recovery-prep
-        image: hashicorp/vault:1.21.2
-        imagePullPolicy: IfNotPresent
-        command: [sh, /vault/scripts/recovery-init.sh]
-        volumeMounts:
-          - name: recovery-prep
-            mountPath: /vault/recovery-prep
-          - name: recovery-init-script
-            mountPath: /vault/scripts

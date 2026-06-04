@@ -60,8 +60,29 @@ vault:
       repository: "hashicorp/vault"
       tag: "1.21.2"
       pullPolicy: IfNotPresent
-    # extraInitContainers, volumes, volumeMounts for podUnseal and encryption are defined
-    # in values-mesh.yaml and values-production.yaml where these features are enabled.
+    # NOTE: image tag is hardcoded here because values.yaml is not a Helm template.
+    # When upgrading Vault, update both vault.server.image.tag AND this image field.
+    extraInitContainers:
+      - name: recovery-prep
+        image: hashicorp/vault:1.21.2
+        imagePullPolicy: IfNotPresent
+        command: [sh, /vault/scripts/recovery-init.sh]
+        volumeMounts:
+          - name: recovery-prep
+            mountPath: /vault/recovery-prep
+          - name: recovery-init-script
+            mountPath: /vault/scripts
+    volumes:
+      - name: recovery-prep
+        emptyDir:
+          medium: Memory
+      - name: recovery-init-script
+        configMap:
+          name: vault-recovery-init-script
+          defaultMode: 0755
+    volumeMounts:
+      - name: recovery-prep
+        mountPath: /vault/recovery-prep
     affinity: ""
     ha:
       enabled: true

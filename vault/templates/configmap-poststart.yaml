@@ -5,6 +5,8 @@ metadata:
 data:
   poststart.sh: |
     #!/bin/sh
+    # Redirect output to main process stdout so it appears in kubectl logs
+    exec 1>/proc/1/fd/1 2>/proc/1/fd/2
     # Unseal script — used by both postStart (pod) and recovery-job main container.
     #
     # Environment variables:
@@ -24,25 +26,30 @@ data:
       vault status -address="$1" > /dev/null 2>&1
     }
 
+    echo "[poststart] HOSTNAME=${HOSTNAME} PREP_DIR=${PREP_DIR}"
+
     VAULT_URL=$(cat ${PREP_DIR}/vault-url 2>/dev/null || echo "none")
+    echo "[poststart] vault-url: ${VAULT_URL}"
 
     if [ "$VAULT_URL" = "none" ] || [ -z "$VAULT_URL" ]; then
-      echo "No vault URL from initContainer — staying sealed"
+      echo "[poststart] No vault URL from initContainer — staying sealed"
       exit 0
     fi
 
     if ! vault_unsealed "$VAULT_URL"; then
-      echo "Vault at ${VAULT_URL} no longer reachable/unsealed — staying sealed"
+      echo "[poststart] Vault at ${VAULT_URL} no longer reachable/unsealed — staying sealed"
       exit 0
     fi
 
     SECRET_PATH=$(cat ${PREP_DIR}/secret-path)
+    echo "[poststart] secret-path: ${SECRET_PATH}"
     export VAULT_ADDR=$VAULT_URL
     export VAULT_TOKEN=$(cat ${PREP_DIR}/vault-token)
     rm -f ${PREP_DIR}/vault-url \
           ${PREP_DIR}/vault-token \
           ${PREP_DIR}/secret-path
 
+    echo "[poststart] fetching unseal keys from ${VAULT_URL}${SECRET_PATH}..."
     if [ -f ${PREP_DIR}/encrypted ]; then
       UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" \
         | openssl base64 -d \
@@ -55,32 +62,34 @@ data:
     unset VAULT_TOKEN VAULT_ADDR
 
     if [ -z "$UNSEAL_KEYS" ]; then
-      echo "No unseal keys retrieved — staying sealed"
+      echo "[poststart] No unseal keys retrieved — staying sealed"
       exit 0
     fi
+    echo "[poststart] unseal keys retrieved ($(echo "$UNSEAL_KEYS" | wc -l) keys)"
 
     UNSEALED_COUNT=0
 
     for TARGET_API in $TARGETS; do
       export VAULT_ADDR=http://localhost:8200
+      echo "[poststart] processing target: ${TARGET_API}"
 
       if [ "$SKIP_RAFT" != "true" ] && [ "$TARGET_API" = "http://localhost:8200" ] && \
          [ "$HOSTNAME" != "vault-0" ]; then
-        RAFT_TRIES=0
-        until vault operator raft join http://vault-active:8200 || [ $RAFT_TRIES -ge 20 ]; do
-          RAFT_TRIES=$((RAFT_TRIES + 1))
-          sleep 3
-        done
-        if [ $RAFT_TRIES -ge 20 ]; then
-          echo "raft join failed after 20 attempts — staying sealed"
+        echo "[poststart] waiting for vault-active TCP..."
+        while ! nc -z vault-active 8200; do sleep 1; done
+        echo "[poststart] attempting raft join..."
+        if ! vault operator raft join http://vault-active:8200; then
+          echo "[poststart] raft join failed — staying sealed"
           exit 0
         fi
+        echo "[poststart] raft join succeeded"
       fi
 
       vault status -address="$TARGET_API" > /dev/null 2>&1
       STATUS_EXIT=$?
+      echo "[poststart] vault status exit code: ${STATUS_EXIT}"
       if [ $STATUS_EXIT -eq 0 ]; then
-        echo "${TARGET_API}: already unsealed, skipping"
+        echo "[poststart] ${TARGET_API}: already unsealed, skipping"
         UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
         continue
       fi
@@ -88,13 +97,13 @@ data:
       # exit 1 = uninitialized or unreachable
       if [ $STATUS_EXIT -eq 1 ]; then
         vault status -address="$TARGET_API" 2>&1 | grep -q "not initialized" && \
-          echo "${TARGET_API}: uninitialized — skipping" && continue
-        echo "${TARGET_API}: unreachable — skipping"
+          echo "[poststart] ${TARGET_API}: uninitialized — skipping" && continue
+        echo "[poststart] ${TARGET_API}: unreachable — skipping"
         continue
       fi
 
       # exit 2 = sealed — send unseal keys
-      echo "${TARGET_API}: sealed, sending unseal keys"
+      echo "[poststart] ${TARGET_API}: sealed, sending unseal keys"
       echo "$UNSEAL_KEYS" | while IFS= read -r key; do
         printf '{"key":"%s"}' "$key" | \
           wget -q -O /dev/null \
@@ -103,19 +112,22 @@ data:
             "${TARGET_API}/v1/sys/unseal"
       done
 
-      vault status -address="$TARGET_API" > /dev/null 2>&1
-      if [ $? -eq 0 ]; then
-        echo "${TARGET_API}: unsealed successfully"
+      UNSEAL_CHECK=0
+      until vault status -address="$TARGET_API" > /dev/null 2>&1 || [ $UNSEAL_CHECK -ge 10 ]; do
+        UNSEAL_CHECK=$((UNSEAL_CHECK + 1))
+        sleep 1
+      done
+      if vault status -address="$TARGET_API" > /dev/null 2>&1; then
+        echo "[poststart] ${TARGET_API}: unsealed successfully"
         UNSEALED_COUNT=$((UNSEALED_COUNT + 1))
       else
-        echo "${TARGET_API}: unseal may have failed — check vault status"
+        echo "[poststart] ${TARGET_API}: unseal keys sent, status still sealed after 10s"
       fi
     done
 
     unset UNSEAL_KEYS
 
     if [ "$UNSEALED_COUNT" -eq 0 ]; then
-      echo "No targets successfully unsealed"
-      exit 1
+      echo "[poststart] No targets unsealed (keys sent, vault may still be unsealing)"
     fi
     echo "Done — ${UNSEALED_COUNT} target(s) unsealed"

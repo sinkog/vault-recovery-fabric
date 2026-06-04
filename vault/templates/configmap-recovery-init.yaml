@@ -29,9 +29,12 @@ data:
       if [ "${SKIP_ACTIVE_CHECK:-false}" != "true" ]; then
         if vault_unsealed "http://vault-active:8200"; then
           VAULT_URL="http://vault-active:8200"
-          AUTH_ROLE="vault-unseal"
+          AUTH_ROLE="vault-recovery-unseal"
           AUTH_PATH="auth/kubernetes"
           SECRET_PATH="{{ include "vrf.localSecretPath" . }}"
+          {{- if .Values.recovery.encryption.enabled }}
+          VAULT_ENCRYPTED=true
+          {{- end }}
         fi
       fi
 
@@ -43,13 +46,22 @@ data:
           AUTH_ROLE="{{ .Values.recovery.fallback.vaultRole }}"
           AUTH_PATH="{{ .Values.recovery.fallback.k8sAuthPath }}"
           SECRET_PATH="{{ include "vrf.fallbackSecretPath" . }}"
+          {{- if .Values.recovery.encryption.enabled }}
+          VAULT_ENCRYPTED=true
+          {{- end }}
         else
           echo "Neither vault-active nor fallback reachable/unsealed — exiting (no recovery source)"
           exit 0
         fi
         {{- else }}
-        echo "vault-active unreachable and no fallback configured — exiting (bootstrap job will handle init)"
-        exit 0
+        if [ "$HOSTNAME" != "vault-0" ] || nc -z vault-active 8200; then
+          echo "vault-active not ready, waiting..."
+          while ! nc -z vault-active 8200; do sleep 1; done
+          continue
+        else
+          echo "vault-0: vault-active unreachable — bootstrap job will handle init"
+          exit 0
+        fi
         {{- end }}
       fi
 
@@ -61,7 +73,7 @@ data:
       VAULT_TOKEN=$(vault write -field=token \
         "${AUTH_PATH}/login" \
         role="$AUTH_ROLE" \
-        jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+        jwt="$(cat /var/run/secrets/vault-recovery/token)" 2>/dev/null)
 
       if [ -z "$VAULT_TOKEN" ]; then
         TOKEN_FAIL=$((TOKEN_FAIL + 1))
@@ -78,9 +90,7 @@ data:
       echo "$VAULT_URL"    > ${PREP_DIR}/vault-url
       echo "$VAULT_TOKEN"  > ${PREP_DIR}/vault-token
       echo "$SECRET_PATH"  > ${PREP_DIR}/secret-path
-      {{- if .Values.recovery.encryption.enabled }}
-      echo "true"          > ${PREP_DIR}/encrypted
-      {{- end }}
+      [ "${VAULT_ENCRYPTED:-false}" = "true" ] && echo "true" > ${PREP_DIR}/encrypted
 
       unset VAULT_TOKEN VAULT_SKIP_VERIFY
       echo "Token prepared from ${VAULT_URL}"

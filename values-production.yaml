@@ -51,6 +51,9 @@ vault:
           items:
             - key: passphrase
               path: passphrase
+      - name: vault-recovery-token
+        secret:
+          secretName: vault-recovery-token
     volumeMounts:
       - name: recovery-prep
         mountPath: /vault/recovery-prep

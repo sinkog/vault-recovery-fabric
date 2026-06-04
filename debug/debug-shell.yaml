@@ -1,0 +1,68 @@
+# Debug shell pod: recovery-prep sidecar + main debug container
+# Both containers just sleep — exec into either to debug manually.
+#
+# Apply:
+#   kubectl --context paynance-mgm apply -f debug/debug-shell.yaml -n vault-test
+#   kubectl --context paynance-mgm apply -f debug/debug-shell.yaml -n vault-2
+#
+# Exec into sidecar (recovery-prep):
+#   kubectl --context paynance-mgm exec -it vault-debug-shell -n vault-test -c recovery-prep -- sh
+#
+# Exec into main shell:
+#   kubectl --context paynance-mgm exec -it vault-debug-shell -n vault-test -c debug-shell -- sh
+#
+# Cleanup:
+#   kubectl --context paynance-mgm delete pod vault-debug-shell -n vault-test
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vault-debug-shell
+spec:
+  serviceAccountName: vault
+  restartPolicy: Never
+  initContainers:
+  - name: recovery-prep
+    image: hashicorp/vault:1.21.2
+    imagePullPolicy: IfNotPresent
+    restartPolicy: Always  # sidecar: fut a main container mellett
+    command: ["sleep", "infinity"]
+    volumeMounts:
+    - name: recovery-prep
+      mountPath: /vault/recovery-prep
+    - name: recovery-init-script
+      mountPath: /vault/scripts
+    - name: vault-recovery-token
+      mountPath: /var/run/secrets/vault-recovery
+      readOnly: true
+  containers:
+  - name: debug-shell
+    image: hashicorp/vault:1.21.2
+    imagePullPolicy: IfNotPresent
+    command: ["sleep", "infinity"]
+    volumeMounts:
+    - name: recovery-prep
+      mountPath: /vault/recovery-prep
+    - name: recovery-init-script
+      mountPath: /vault/scripts
+    - name: config-volume
+      mountPath: /mnt/config
+    - name: vault-reviewer-token
+      mountPath: /var/run/secrets/vault-reviewer
+      readOnly: true
+  volumes:
+  - name: recovery-prep
+    emptyDir:
+      medium: Memory
+  - name: recovery-init-script
+    configMap:
+      name: vault-recovery-init-script
+      defaultMode: 0755
+  - name: config-volume
+    configMap:
+      name: vault-postconfig
+  - name: vault-reviewer-token
+    secret:
+      secretName: vault-reviewer-token
+  - name: vault-recovery-token
+    secret:
+      secretName: vault-recovery-token

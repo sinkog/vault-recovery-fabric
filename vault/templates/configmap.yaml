@@ -21,8 +21,8 @@ data:
     path "secret/metadata/{{ $localPath }}" {
         capabilities = ["read"]
     }
-    # Required for Vault CLI preflight mount detection
-    path "secret/" {
+    # Required for Vault CLI preflight mount detection (vault kv get)
+    path "sys/internal/ui/mounts/secret/*" {
         capabilities = ["read"]
     }
   vault-rekey.hcl: |

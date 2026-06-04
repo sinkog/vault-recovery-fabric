@@ -3,7 +3,24 @@ kind: ConfigMap
 metadata:
   name: vault-postconfig
 data:
-    vault-unseal.hcl: |
-      path "secret/vault/unseal-keys" {
-          capabilities = ["read"]
-      }
+  vault-unseal.hcl: |
+    # KV v2: policy must reference secret/data/<path>, not secret/<path>
+    path "secret/data/vault/unseal-keys" {
+        capabilities = ["read"]
+    }
+    path "secret/metadata/vault/unseal-keys" {
+        capabilities = ["read"]
+    }
+  vault-rekey.hcl: |
+    path "secret/data/vault/unseal-keys" {
+        capabilities = ["read", "create", "update"]
+    }
+    path "secret/metadata/vault/unseal-keys" {
+        capabilities = ["read", "list"]
+    }
+    path "sys/rekey/*" {
+        capabilities = ["create", "update", "read", "delete"]
+    }
+    path "sys/rekey/init" {
+        capabilities = ["create", "update", "read", "delete"]
+    }

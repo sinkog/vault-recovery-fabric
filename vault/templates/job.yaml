@@ -24,14 +24,14 @@ spec:
           VAULT_API=http://vault-0.vault-internal:8200
 
           # Wait for Vault API to respond (any HTTP status means API is up)
-          until curl -sf -o /dev/null -w "%{http_code}" \
+          until curl -s -o /dev/null -w "%{http_code}" \
               "${VAULT_API}/v1/sys/health" 2>/dev/null | \
               grep -qE '^[2345][0-9][0-9]$'; do
             sleep 1
           done
 
           # 501 = not initialized; anything else = already initialized
-          HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             "${VAULT_API}/v1/sys/health" 2>/dev/null || echo "000")
           if [ "$HTTP_CODE" != "501" ]; then
             echo "Vault already initialized (HTTP $HTTP_CODE), skipping init"
@@ -69,6 +69,12 @@ spec:
             policies=vault-unseal \
             ttl=5m \
             token_num_uses=2
+          vault write auth/kubernetes/role/vault-rekey \
+            bound_service_account_names=vault-recovery \
+            bound_service_account_namespaces={{ .Release.Namespace }} \
+            policies=vault-rekey \
+            ttl=10m \
+            token_num_uses=3
           vault secrets list | grep -q '^secret/' || vault secrets enable -path=secret -version=2 kv
           {{- if .Values.bootstrap.storeUnsealKeys }}
           vault kv put secret/vault/unseal-keys contents=@/tmp/vault-unseal.txt

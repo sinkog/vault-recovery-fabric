@@ -33,7 +33,7 @@ spec:
           fi
 
           VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login \
-            role=vault-recovery-unseal \
+            role=vault-rekey \
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
           export VAULT_TOKEN
 

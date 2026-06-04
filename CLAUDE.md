@@ -42,7 +42,7 @@ vault/       Vault Helm chart wrapper (HashiCorp upstream, v0.32.0 / Vault 1.21.
   templates/
     configmap.yaml             vault-unseal policy HCL
     job.yaml                   init/recovery job (jelenlegi: nem idempotens)
-    rbac.yaml                  ClusterRoleBinding-ok (jelenleg: hibás, duplikált név)
+    rbac.yaml                  ClusterRoleBinding-ok (Release.Name alapú nevek, 3 binding)
     serviceaccount.yaml        vault-auth SA
     serviceaccount-secret.yaml vault-auth token secret
 context.md   Teljes víziós leírás (fejlesztési háttér, threat model, pozicionálás)
@@ -66,5 +66,5 @@ delete.sh    helm uninstall + PVC cleanup
 Olvasd el: `context.md`, `ai/SYSTEM_CONTEXT.md`, `ai/LLM_RULES.md`
 
 ```bash
-helm template vault ./vault -n kube-vault
+helm template vault-recovery-fabric ./vault -n kube-vault
 ```

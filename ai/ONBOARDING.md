@@ -5,7 +5,7 @@
 - **Mi ez:** Vault Recovery Fabric — cross-cluster, vendorfüggetlen Vault recovery orchestration platform
 - **Kulcsgondolat:** recovery viselkedés = deployable infrastructure state (nem runbook)
 - **Víziós dokumentum:** `context.md` — olvasd el először
-- **Upstream dependency:** `hashicorp/vault@0.28.0` (Consul eltávolítva — Integrated Raft storage)
+- **Upstream dependency:** `hashicorp/vault@0.32.0` / Vault 1.21.2 (Integrated Raft storage, Consul eltávolítva)
 - **Alapelv:** recovery-plane separation — a recovery komponens sosem függ azon a Vaulton, amit helyre akar állítani
 - **Mérce:** `helm template` hiba nélkül fut, `helm lint` zöld
 

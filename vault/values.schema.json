@@ -55,7 +55,12 @@
             "passphraseSecret": { "type": "string" }
           },
           "if": { "properties": { "enabled": { "const": true } } },
-          "then": { "required": ["passphraseSecret"] }
+          "then": {
+            "properties": {
+              "passphraseSecret": { "type": "string", "minLength": 1 }
+            },
+            "required": ["passphraseSecret"]
+          }
         }
       },
       "if": {
@@ -63,7 +68,13 @@
       },
       "then": {
         "properties": {
-          "fallback": { "required": ["addr", "secretPath"] }
+          "fallback": {
+            "properties": {
+              "addr":       { "type": "string", "minLength": 1 },
+              "secretPath": { "type": "string", "minLength": 1 }
+            },
+            "required": ["addr", "secretPath"]
+          }
         }
       }
     },

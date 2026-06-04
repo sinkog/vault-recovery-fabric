@@ -1,0 +1,69 @@
+{{- if .Values.recovery.fallback.addr }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-recovery-init-script
+data:
+  recovery-init.sh: |
+    #!/bin/sh
+    # Recovery material preparation — runs in initContainer before vault starts.
+    # If vault-active is reachable (other pods already unsealed): let postStart
+    # handle unseal via local KV. If not, fetch material from fallback Vault
+    # and write to /vault/recovery-prep/ (Memory emptyDir) for postStart use.
+
+    PREP_DIR=/vault/recovery-prep
+    FALLBACK_API={{ .Values.recovery.fallback.addr }}
+
+    # Check if an active unsealed node already exists in this cluster
+    ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
+
+    if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
+      echo "vault-active reachable and unsealed — postStart will handle local unseal"
+      exit 0
+    fi
+
+    # No unsealed active node — try fallback Vault
+    FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      "${FALLBACK_API}/v1/sys/health" 2>/dev/null || echo "000")
+
+    if ! echo "$FB_CODE" | grep -qE '^[2345][0-9][0-9]$'; then
+      echo "Fallback vault not reachable (HTTP ${FB_CODE}), postStart will try local KV"
+      exit 0
+    fi
+
+    {{- if .Values.recovery.fallback.tlsSkipVerify }}
+    export VAULT_SKIP_VERIFY=true
+    {{- end }}
+    export VAULT_ADDR=$FALLBACK_API
+
+    # Single-use token from fallback Vault via K8s auth
+    VAULT_TOKEN=$(vault write -field=token \
+      {{ .Values.recovery.fallback.k8sAuthPath }}/login \
+      role={{ .Values.recovery.fallback.vaultRole }} \
+      jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+
+    if [ -z "$VAULT_TOKEN" ]; then
+      echo "Failed to obtain fallback Vault token, postStart will try local KV"
+      exit 0
+    fi
+    export VAULT_TOKEN
+
+    {{- if .Values.recovery.encryption.enabled }}
+    vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
+      | openssl base64 -d \
+      | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/vault/recovery-passphrase/passphrase \
+      | grep -v '^$' > ${PREP_DIR}/unseal-keys 2>/dev/null
+    {{- else }}
+    vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
+      | grep -v '^$' > ${PREP_DIR}/unseal-keys 2>/dev/null
+    {{- end }}
+
+    KEY_COUNT=$(grep -c . ${PREP_DIR}/unseal-keys 2>/dev/null || echo 0)
+    if [ "$KEY_COUNT" -gt 0 ]; then
+      echo "Recovery material prepared: ${KEY_COUNT} key(s) in ${PREP_DIR}"
+    else
+      echo "No recovery material retrieved, postStart will try local KV"
+      rm -f ${PREP_DIR}/unseal-keys
+    fi
+{{- end }}

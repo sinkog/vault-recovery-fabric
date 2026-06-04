@@ -42,6 +42,27 @@ vault:
   server:
     serviceAccount:
       createSecret: false
+    initContainers:
+      - name: recovery-prep
+        image: hashicorp/vault:1.21.2
+        imagePullPolicy: IfNotPresent
+        command: [sh, /vault/scripts/recovery-init.sh]
+        volumeMounts:
+          - name: recovery-prep
+            mountPath: /vault/recovery-prep
+          - name: recovery-init-script
+            mountPath: /vault/scripts
+    volumes:
+      - name: recovery-prep
+        emptyDir:
+          medium: Memory
+      - name: recovery-init-script
+        configMap:
+          name: vault-recovery-init-script
+          defaultMode: 0755
+    volumeMounts:
+      - name: recovery-prep
+        mountPath: /vault/recovery-prep
     affinity: ""
     ha:
       enabled: true
@@ -64,14 +85,24 @@ vault:
             role=vault-unseal \
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"); do sleep 4; done
         export VAULT_TOKEN
-        UNSEAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys 2>/dev/null || true)
-        if [ -n "$UNSEAL_KEYS" ]; then
-          echo "$UNSEAL_KEYS" | grep -v '^$' | while IFS= read -r key; do
+        if [ -s /vault/recovery-prep/unseal-keys ]; then
+          echo "Using recovery material prepared by initContainer"
+          while IFS= read -r key; do
             printf '{"key":"%s"}' "$key" | \
               curl -sf --request PUT --data @- \
                 http://localhost:8200/v1/sys/unseal > /dev/null
-          done
+          done < /vault/recovery-prep/unseal-keys
+          rm -f /vault/recovery-prep/unseal-keys
         else
-          echo "No local unseal keys found — manual or mesh recovery required"
+          UNSEAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys 2>/dev/null || true)
+          if [ -n "$UNSEAL_KEYS" ]; then
+            echo "$UNSEAL_KEYS" | grep -v '^$' | while IFS= read -r key; do
+              printf '{"key":"%s"}' "$key" | \
+                curl -sf --request PUT --data @- \
+                  http://localhost:8200/v1/sys/unseal > /dev/null
+            done
+          else
+            echo "No local unseal keys found — manual or mesh recovery required"
+          fi
         fi
       fi

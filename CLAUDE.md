@@ -43,7 +43,7 @@ vault/       Vault Helm chart wrapper (HashiCorp upstream, v0.32.0 / Vault 1.21.
   templates/
     configmap.yaml             vault-unseal policy HCL
     job.yaml                   bootstrap init job (idempotens, Helm post-install hook)
-    rbac.yaml                  ClusterRoleBinding-ok (Release.Name alapú nevek, 3 binding)
+    rbac.yaml                  1 ClusterRoleBinding: vault SA → system:auth-delegator (TokenReview)
     serviceaccount.yaml        vault-auth SA
     serviceaccount-secret.yaml vault-auth token secret
 context.md   Teljes víziós leírás (fejlesztési háttér, threat model, pozicionálás)
@@ -57,7 +57,7 @@ delete.sh    helm uninstall + PVC cleanup
 
 1. **Recovery-plane separation**: a recovery job SOHA nem függhet attól a Vaulttól, amit helyre akar állítani
 2. **Ephemeral access**: nincs fix token, nincs fix jelszó — K8s SA JWT → rövid TTL Vault token
-3. **Fallback compromise resistance**: egy fallback Vault kompromittálása önmagában nem elég, kell a célcluster recovery identitása is
+3. **Fallback compromise resistance**: ha `recovery.encryption.enabled=true`, egy fallback Vault kompromittálása önmagában nem elég — kell hozzá a célcluster K8s Secret-jében lévő AES passphrase is (jelenlegi implementáció: AES-256-CBC; célarchitektúra: per-cluster public-key envelope encryption)
 4. **Idempotens viselkedés**: minden Job biztonságosan futtatható újra
 
 ---

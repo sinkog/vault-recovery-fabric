@@ -94,8 +94,8 @@ data:
     The following events must be present in audit logs after any rekey or recovery:
 
     - auth/kubernetes/login  (recovery SA authentication)
-    - secret/vault/unseal-keys  read  (recovery material access)
-    - secret/vault/unseal-keys  update  (after rekey)
+    - {{ include "vrf.localSecretPath" . }}  read  (recovery material access)
+    - {{ include "vrf.localSecretPath" . }}  update  (after rekey)
     - sys/rekey/*  (rekey operation chain)
 
     Enable audit log:

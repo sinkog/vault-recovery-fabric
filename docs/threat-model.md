@@ -10,7 +10,7 @@ This threat model covers the vault-recovery-fabric chart in multi-cluster recove
 
 | Asset | Location | Sensitivity |
 |---|---|---|
-| Vault unseal keys | `secret/vault/unseal-keys` (local + fallback KV) | Critical |
+| Vault unseal keys | Lab: `secret/vault/unseal-keys`; Mesh: `secret/recovery/<selfName>/unseal-keys` (local + fallback KV) | Critical |
 | K8s SA token (vault-recovery) | Auto-mounted by K8s | High |
 | AES passphrase | K8s Secret `vault-recovery-passphrase` | High |
 | Vault root token | generated during bootstrap, not persisted by default | Critical — operator must handle out-of-band |

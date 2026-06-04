@@ -111,7 +111,10 @@ PASSPHRASE=$(kubectl get secret vault-recovery-passphrase \
 # The unseal keys were obtained during vault operator init — store them securely
 ENCRYPTED=$(cat /secure/bootstrap/vault-a-unseal-keys.txt \
   | openssl enc -aes-256-cbc -pbkdf2 -pass "pass:$PASSPHRASE" | openssl base64 -A)
-VAULT_ADDR=<vault-b-addr> vault kv put secret/vault/unseal-keys contents="$ENCRYPTED"
+# Mesh path (recovery.selfName=vault-a):
+VAULT_ADDR=<vault-b-addr> vault kv put secret/recovery/vault-a/unseal-keys contents="$ENCRYPTED"
+# Legacy/lab path (no selfName):
+# VAULT_ADDR=<vault-b-addr> vault kv put secret/vault/unseal-keys contents="$ENCRYPTED"
 ```
 
 > **Note**: Production setups must source recovery material from secure out-of-band
@@ -217,7 +220,7 @@ access to the K8s API of the target cluster.
 | `recovery.selfName` | `""` | This cluster's name in the mesh |
 | `recovery.fallback.addr` | `""` | Fallback Vault API address (required when triggerId set) |
 | `recovery.fallback.tlsSkipVerify` | `false` | Skip TLS verification (**never use in production**) |
-| `recovery.fallback.cidr` | `""` | Fallback Vault CIDR for NetworkPolicy egress — **required in production-like mode**; without it egress is broad |
+| `recovery.fallback.cidr` | `""` | Fallback Vault CIDR for NetworkPolicy egress; **required** when `recovery.triggerId` is set with `networkPolicy.enabled=true` (chart fails without it) |
 | `recovery.rekey.experimental` | `true` | Acknowledge rekey is experimental |
 | `recovery.rekey.confirm` | `false` | Must be `true` to trigger rekey job |
 | `recovery.rekey.keyShares` | `5` | Number of new key shares |

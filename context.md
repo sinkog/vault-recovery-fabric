@@ -209,20 +209,35 @@ Vault-B kompromittálása önmagában ne legyen elég Vault-A feloldásához.
 
 Ehhez a recovery material ne nyersen legyen tárolva, hanem kötődjön a célcluster recovery identitásához.
 
-Elvi minta:
+Elvi minta (célarchitektúra):
 
 ```text
 Vault-B-ben tárolt A recovery material
-  -> A-cluster recovery identity / public key alapján védve
+  -> A-cluster recovery identity / public key alapján védve  [CÉLARCHITEKTÚRA]
   -> Vault-B csak tárolja
   -> A recovery pod tudja felhasználni
 ```
 
-Security narratíva:
+Jelenlegi implementáció:
+
+```text
+Vault-B-ben tárolt A recovery material
+  -> AES-256-CBC titkosítás, passphrase a target cluster K8s Secret-jében
+  -> Fallback Vault compromise + target K8s passphrase Secret szükséges
+```
+
+Security narratíva (jelenlegi, encryption.enabled=true esetén):
 
 ```text
 Fallback Vault compromise alone is not sufficient.
-The attacker also needs the target cluster recovery identity.
+The attacker also needs the AES passphrase Secret from the target cluster.
+```
+
+Célarchitektúra (roadmap):
+
+```text
+age / SOPS / Vault Transit envelope encryption
+per-cluster public-key based recovery identity
 ```
 
 Magyarul:

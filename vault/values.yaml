@@ -3,6 +3,11 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
+recoveryInitImage:
+  repository: "hashicorp/vault"
+  tag: "1.21.2"
+  pullPolicy: IfNotPresent
+
 networkPolicy:
   enabled: true
   allowClientNamespaces: []
@@ -44,7 +49,7 @@ vault:
       createSecret: false
     extraInitContainers:
       - name: recovery-prep
-        image: hashicorp/vault:1.21.2
+        image: hashicorp/vault:1.21.2  # keep in sync with recoveryInitImage.tag / appVersion
         imagePullPolicy: IfNotPresent
         command: [sh, /vault/scripts/recovery-init.sh]
         volumeMounts:

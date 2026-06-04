@@ -10,6 +10,14 @@
         "pullPolicy":  { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
       }
     },
+    "recoveryInitImage": {
+      "type": "object",
+      "properties": {
+        "repository":  { "type": "string" },
+        "tag":         { "type": "string" },
+        "pullPolicy":  { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
     "networkPolicy": {
       "type": "object",
       "properties": {

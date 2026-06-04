@@ -52,6 +52,9 @@ vault:
             mountPath: /vault/recovery-prep
           - name: recovery-init-script
             mountPath: /vault/scripts
+          - name: vault-recovery-token
+            mountPath: /vault/recovery-sa-token
+            readOnly: true
     volumes:
       - name: recovery-prep
         emptyDir:
@@ -60,6 +63,9 @@ vault:
         configMap:
           name: vault-recovery-init-script
           defaultMode: 0755
+      - name: vault-recovery-token
+        secret:
+          secretName: vault-recovery-token
     volumeMounts:
       - name: recovery-prep
         mountPath: /vault/recovery-prep

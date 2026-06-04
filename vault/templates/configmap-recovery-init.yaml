@@ -37,11 +37,17 @@ data:
     {{- end }}
     export VAULT_ADDR=$FALLBACK_API
 
-    # Single-use token from fallback Vault via K8s auth
+    # Use vault-recovery SA token (not pod's vault SA token) for fallback auth.
+    # This token is mounted at a separate path — the main vault container has
+    # no reason to read it and it carries only recovery-plane credentials.
+    RECOVERY_JWT=$(cat /vault/recovery-sa-token/token 2>/dev/null || \
+                   cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
     VAULT_TOKEN=$(vault write -field=token \
       {{ .Values.recovery.fallback.k8sAuthPath }}/login \
       role={{ .Values.recovery.fallback.vaultRole }} \
-      jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+      jwt="$RECOVERY_JWT" 2>/dev/null)
+    unset RECOVERY_JWT
 
     if [ -z "$VAULT_TOKEN" ]; then
       echo "Failed to obtain fallback Vault token, postStart will try local KV"

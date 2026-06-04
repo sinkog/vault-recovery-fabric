@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-poststart-script
+data:
+  poststart.sh: |
+    #!/bin/sh
+    # Pod postStart unseal script.
+    # Reads vault URL, token and secret path prepared by recovery-prep initContainer.
+    # If no token is available, stays sealed and exits cleanly.
+
+    VAULT_URL=$(cat /vault/recovery-prep/vault-url 2>/dev/null || echo "none")
+
+    if [ "$VAULT_URL" = "none" ] || [ -z "$VAULT_URL" ]; then
+      echo "No vault URL from initContainer — staying sealed"
+      exit 0
+    fi
+
+    HEALTH=$(curl -s -o /dev/null -w "%{http_code}" \
+      "${VAULT_URL}/v1/sys/health" 2>/dev/null || echo "000")
+    if [ "$HEALTH" != "200" ] && [ "$HEALTH" != "429" ]; then
+      echo "Vault at ${VAULT_URL} no longer reachable (HTTP ${HEALTH}) — staying sealed"
+      exit 0
+    fi
+
+    SECRET_PATH=$(cat /vault/recovery-prep/secret-path)
+    export VAULT_ADDR=$VAULT_URL
+    export VAULT_TOKEN=$(cat /vault/recovery-prep/vault-token)
+    rm -f /vault/recovery-prep/vault-url \
+          /vault/recovery-prep/vault-token \
+          /vault/recovery-prep/secret-path
+
+    if [ -f /vault/recovery-prep/encrypted ]; then
+      UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" \
+        | openssl base64 -d \
+        | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/vault/recovery-passphrase/passphrase \
+        | grep -v '^$' 2>/dev/null)
+      rm -f /vault/recovery-prep/encrypted
+    else
+      UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" 2>/dev/null | grep -v '^$')
+    fi
+    unset VAULT_TOKEN VAULT_ADDR
+
+    if [ -z "$UNSEAL_KEYS" ]; then
+      echo "No unseal keys retrieved — staying sealed"
+      exit 0
+    fi
+
+    export VAULT_ADDR=http://localhost:8200
+
+    if [[ "$HOSTNAME" != "vault-0" ]]; then
+      RAFT_TRIES=0
+      until vault operator raft join http://vault-active:8200 || [ $RAFT_TRIES -ge 20 ]; do
+        RAFT_TRIES=$((RAFT_TRIES + 1))
+        sleep 3
+      done
+      if [ $RAFT_TRIES -ge 20 ]; then
+        echo "raft join failed after 20 attempts — staying sealed"
+        exit 0
+      fi
+    fi
+
+    echo "$UNSEAL_KEYS" | while IFS= read -r key; do
+      printf '{"key":"%s"}' "$key" | \
+        curl -sf --request PUT --data @- \
+          http://localhost:8200/v1/sys/unseal > /dev/null
+    done
+    unset UNSEAL_KEYS
+
+    FINAL=$(curl -s -o /dev/null -w "%{http_code}" \
+      http://localhost:8200/v1/sys/health 2>/dev/null || echo "000")
+    if [ "$FINAL" = "200" ] || [ "$FINAL" = "429" ] || [ "$FINAL" = "473" ]; then
+      echo "Unseal successful (HTTP ${FINAL})"
+    else
+      echo "Unseal may have failed (HTTP ${FINAL}) — check vault status"
+    fi

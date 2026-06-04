@@ -19,7 +19,7 @@ Multi-cluster recovery mesh implementálva (M4). Helm release neve kötelezően 
 |---|---|---|
 | `vault/templates/configmap.yaml` | ✓ | vault-unseal + vault-rekey policy, release name guard |
 | `vault/templates/job.yaml` | ✓ | idempotens (HTTP 501 check), reviewer token, policy-before-role |
-| `vault/templates/rbac.yaml` | ✓ | Release.Name alapú nevek, 4 binding (vault/auth/recovery/reviewer) |
+| `vault/templates/rbac.yaml` | ✓ | Release.Name alapú egyetlen binding: vault SA → system:auth-delegator (TokenReview) |
 | `vault/templates/recovery-job.yaml` | ✓ | two-phase, per-pod targets, unseal proof |
 | `vault/templates/rekey-job.yaml` | ⚠ alpha | triple gate, külön role, syncFallback flag; nem atomi |
 | `vault/templates/networkpolicy.yaml` | ✓ | from selectors, CIDR guard recovery esetén |

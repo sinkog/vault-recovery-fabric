@@ -30,7 +30,7 @@ Fejlesztési irányok és hardening lista: `ai/ROADMAP.md`
 | Auth | K8s SA JWT → rövid TTL token (vault/vault eltávolítva) |
 | Recovery job | two-phase initContainer + main, per-pod targets |
 | Root token | nem persistálódik, tmp fájlok törlődnek |
-| Reviewer identity | vault-reviewer SA with system:auth-delegator; Vault 1.21+ uses vault SA projected token for TokenReview (no long-lived Secret needed) |
+| TokenReview | vault SA has system:auth-delegator; Vault 1.21+ uses its own projected SA token for TokenReview (no separate reviewer SA or long-lived Secret) |
 | Release name | kötelezően `vault` (release name guard a configmap.yaml-ban) |
 
 ---

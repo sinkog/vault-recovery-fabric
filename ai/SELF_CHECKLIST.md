@@ -16,10 +16,11 @@
 
 ## Vault / unseal flow
 
-- [ ] A postStart logika és az init job flow konzisztens — ha az egyiket módosítottam, a másikat is ellenőriztem
-- [ ] `secret/vault/unseal-keys` path és `contents` mező neve változatlan
+- [ ] Recovery material path konzisztens: `vrf.localSecretPath` és `vrf.fallbackSecretPath` helpereket használ — ne hardcode-olj `secret/vault/unseal-keys`-t (kivéve: postStart legacy path, dokumentált limitáció)
+- [ ] `contents` mező neve változatlan (path változhat selfName alapján)
 - [ ] `vault-unseal` auth path és policy neve változatlan
 - [ ] `vault-0` initiator logika megőrzött
+- [ ] Ha `recovery.selfName` van beállítva, `bootstrap.storeUnsealKeys` legyen false (postStart nem a derived pathot olvassa)
 
 ## Kubernetes / RBAC
 

@@ -1,6 +1,9 @@
 {{- if ne .Release.Name "vault" }}
 {{- fail (printf "vault-recovery-fabric requires Helm release name 'vault' (got: '%s'). Service names vault-active and vault-0.vault-internal are hardcoded for release name 'vault'." .Release.Name) }}
 {{- end }}
+{{- if and .Values.recovery.selfName .Values.bootstrap.storeUnsealKeys }}
+{{- fail "bootstrap.storeUnsealKeys=true is only supported in legacy/lab mode without recovery.selfName. In mesh mode, set bootstrap.storeUnsealKeys=false and use the recovery Job for unsealing." }}
+{{- end }}
 {{- $localPath := trimPrefix "secret/" (include "vrf.localSecretPath" .) }}
 apiVersion: v1
 kind: ConfigMap

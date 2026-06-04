@@ -27,20 +27,30 @@ spec:
           {{- if .Values.recovery.fallback.tlsSkipVerify }}
           export VAULT_SKIP_VERIFY=true
           {{- end }}
-
-          # Wait for fallback Vault API to respond (any HTTP status = reachable)
-          until curl -s -o /dev/null -w "%{http_code}" \
-              "${FALLBACK_API}/v1/sys/health" 2>/dev/null | \
-              grep -qE '^[2345][0-9][0-9]$'; do
-            sleep 2
-          done
-
           export VAULT_ADDR=$FALLBACK_API
-          VAULT_TOKEN=$(vault write -field=token \
-            {{ .Values.recovery.fallback.k8sAuthPath }}/login \
-            role={{ .Values.recovery.fallback.vaultRole }} \
-            jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
-          echo "$VAULT_TOKEN" > /recovery/vault-token
+
+          # Loop until a valid token is obtained
+          until [ -s /recovery/vault-token ]; do
+            FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${FALLBACK_API}/v1/sys/health" 2>/dev/null || echo "000")
+
+            if echo "$FB_CODE" | grep -qE '^(200|429)$'; then
+              VAULT_TOKEN=$(vault write -field=token \
+                {{ .Values.recovery.fallback.k8sAuthPath }}/login \
+                role={{ .Values.recovery.fallback.vaultRole }} \
+                jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+
+              if [ -n "$VAULT_TOKEN" ]; then
+                echo "$VAULT_TOKEN" > /recovery/vault-token
+                unset VAULT_TOKEN
+                break
+              fi
+              echo "Token request failed, retrying in 5s..."
+            else
+              echo "Fallback vault not ready (HTTP ${FB_CODE}), retrying in 5s..."
+            fi
+            sleep 5
+          done
         volumeMounts:
         - name: recovery-data
           mountPath: /recovery

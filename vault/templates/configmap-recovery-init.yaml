@@ -7,62 +7,67 @@ data:
     #!/bin/sh
     PREP_DIR=/vault/recovery-prep
 
-    # Step 1: vault-active él-e?
-    ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-      http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
+    # Loop until we have a token (or vault-active is confirmed available)
+    until [ -s ${PREP_DIR}/vault-token ]; do
 
-    if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
-      VAULT_URL="http://vault-active:8200"
-      AUTH_ROLE="vault-unseal"
-      SECRET_PATH="{{ include "vrf.localSecretPath" . }}"
-    else
-      {{- if .Values.recovery.fallback.addr }}
-      # Step 2: fallback él-e?
-      FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-        "{{ .Values.recovery.fallback.addr }}/v1/sys/health" 2>/dev/null || echo "000")
+      # Step 1: vault-active él-e?
+      ACTIVE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        http://vault-active:8200/v1/sys/health 2>/dev/null || echo "000")
 
-      if [ "$FB_CODE" = "200" ] || [ "$FB_CODE" = "429" ]; then
-        VAULT_URL="{{ .Values.recovery.fallback.addr }}"
-        AUTH_ROLE="{{ .Values.recovery.fallback.vaultRole }}"
-        SECRET_PATH="{{ include "vrf.fallbackSecretPath" . }}"
-        AUTH_PATH="{{ .Values.recovery.fallback.k8sAuthPath }}"
+      if [ "$ACTIVE_CODE" = "200" ] || [ "$ACTIVE_CODE" = "429" ]; then
+        VAULT_URL="http://vault-active:8200"
+        AUTH_ROLE="vault-unseal"
+        AUTH_PATH="auth/kubernetes"
+        SECRET_PATH="{{ include "vrf.localSecretPath" . }}"
       else
-        echo "none" > ${PREP_DIR}/vault-url
-        echo "No available Vault found — staying sealed"
-        exit 0
+        {{- if .Values.recovery.fallback.addr }}
+        # Step 2: fallback él-e?
+        FB_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+          "{{ .Values.recovery.fallback.addr }}/v1/sys/health" 2>/dev/null || echo "000")
+
+        if [ "$FB_CODE" = "200" ] || [ "$FB_CODE" = "429" ]; then
+          VAULT_URL="{{ .Values.recovery.fallback.addr }}"
+          AUTH_ROLE="{{ .Values.recovery.fallback.vaultRole }}"
+          AUTH_PATH="{{ .Values.recovery.fallback.k8sAuthPath }}"
+          SECRET_PATH="{{ include "vrf.fallbackSecretPath" . }}"
+        else
+          echo "Neither vault-active nor fallback reachable, retrying in 10s..."
+          sleep 10
+          continue
+        fi
+        {{- else }}
+        echo "vault-active unreachable and no fallback configured, retrying in 10s..."
+        sleep 10
+        continue
+        {{- end }}
       fi
-      {{- else }}
-      echo "none" > ${PREP_DIR}/vault-url
-      echo "No fallback configured and vault-active unreachable — staying sealed"
-      exit 0
+
+      # Step 3: token kérés
+      export VAULT_ADDR=$VAULT_URL
+      {{- if .Values.recovery.fallback.tlsSkipVerify }}
+      export VAULT_SKIP_VERIFY=true
       {{- end }}
-    fi
 
-    # Step 3: token kérés a service account nevében
-    export VAULT_ADDR=$VAULT_URL
-    {{- if .Values.recovery.fallback.tlsSkipVerify }}
-    export VAULT_SKIP_VERIFY=true
-    {{- end }}
+      VAULT_TOKEN=$(vault write -field=token \
+        "${AUTH_PATH}/login" \
+        role="$AUTH_ROLE" \
+        jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
 
-    AUTH_PATH="${AUTH_PATH:-auth/kubernetes}"
-    VAULT_TOKEN=$(vault write -field=token \
-      "${AUTH_PATH}/login" \
-      role="$AUTH_ROLE" \
-      jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" 2>/dev/null)
+      if [ -z "$VAULT_TOKEN" ]; then
+        echo "Token request failed from ${VAULT_URL}, retrying in 5s..."
+        sleep 5
+        continue
+      fi
 
-    if [ -z "$VAULT_TOKEN" ]; then
-      echo "none" > ${PREP_DIR}/vault-url
-      echo "Token request failed — staying sealed"
-      exit 0
-    fi
+      # Step 4: mentés emptyDir-be
+      echo "$VAULT_URL"    > ${PREP_DIR}/vault-url
+      echo "$VAULT_TOKEN"  > ${PREP_DIR}/vault-token
+      echo "$SECRET_PATH"  > ${PREP_DIR}/secret-path
+      {{- if .Values.recovery.encryption.enabled }}
+      echo "true"          > ${PREP_DIR}/encrypted
+      {{- end }}
 
-    # Step 4: mentés emptyDir-be és kilép
-    echo "$VAULT_URL"    > ${PREP_DIR}/vault-url
-    echo "$VAULT_TOKEN"  > ${PREP_DIR}/vault-token
-    echo "$SECRET_PATH"  > ${PREP_DIR}/secret-path
-    {{- if .Values.recovery.encryption.enabled }}
-    echo "true"          > ${PREP_DIR}/encrypted
-    {{- end }}
+      unset VAULT_TOKEN VAULT_SKIP_VERIFY
+      echo "Token prepared from ${VAULT_URL}"
 
-    unset VAULT_TOKEN VAULT_SKIP_VERIFY
-    echo "Token prepared from ${VAULT_URL}"
+    done

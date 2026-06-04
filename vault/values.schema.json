@@ -19,7 +19,9 @@
     "bootstrap": {
       "type": "object",
       "properties": {
-        "storeUnsealKeys": { "type": "boolean" }
+        "storeUnsealKeys": { "type": "boolean" },
+        "keyShares":       { "type": "integer", "minimum": 1 },
+        "keyThreshold":    { "type": "integer", "minimum": 1 }
       }
     },
     "recovery": {

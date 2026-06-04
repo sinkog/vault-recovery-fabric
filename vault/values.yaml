@@ -10,6 +10,8 @@ networkPolicy:
 
 bootstrap:
   storeUnsealKeys: false
+  keyShares: 5
+  keyThreshold: 3
 
 recovery:
   triggerId: ""

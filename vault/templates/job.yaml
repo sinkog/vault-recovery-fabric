@@ -39,7 +39,10 @@ spec:
           fi
 
           export VAULT_ADDR=$VAULT_API
-          vault operator init > /tmp/keys.txt
+          vault operator init \
+            -key-shares={{ .Values.bootstrap.keyShares }} \
+            -key-threshold={{ .Values.bootstrap.keyThreshold }} \
+            > /tmp/keys.txt
           grep Unseal /tmp/keys.txt | awk '{ print $4 }' > /tmp/vault-unseal.txt
           grep Token  /tmp/keys.txt | awk '{ print $4 }' > /tmp/vault-token.txt
 

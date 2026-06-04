@@ -68,6 +68,14 @@ spec:
 
           rm -f /recovery/vault-token
 
+          KEY_COUNT=$(grep -c . /recovery/unseal-keys 2>/dev/null || echo 0)
+          if [ "$KEY_COUNT" -lt {{ .Values.recovery.rekey.keyThreshold }} ]; then
+            echo "Recovery material has $KEY_COUNT key(s), need at least {{ .Values.recovery.rekey.keyThreshold }} (threshold). Aborting."
+            rm -f /recovery/unseal-keys
+            exit 1
+          fi
+          echo "Recovery material: $KEY_COUNT key(s) available"
+
           TARGETS="{{ join " " .Values.recovery.targets }}"
           UNSEALED_COUNT=0
 
@@ -83,6 +91,11 @@ spec:
 
             if [ "$HTTP_CODE" = "000" ]; then
               echo "${TARGET_API}: unreachable, skipping"
+              continue
+            fi
+
+            if [ "$HTTP_CODE" = "501" ]; then
+              echo "${TARGET_API}: uninitialized (HTTP 501) — refusing to unseal, skipping"
               continue
             fi
 

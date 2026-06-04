@@ -1,5 +1,7 @@
 bootstrap:
   storeUnsealKeys: true
+  keyShares: 1
+  keyThreshold: 1
 
 networkPolicy:
   enabled: false

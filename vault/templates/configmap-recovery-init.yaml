@@ -7,6 +7,10 @@ data:
     #!/bin/sh
     PREP_DIR=/vault/recovery-prep
 
+    {{- if .Values.recovery.fallback.tlsSkipVerify }}
+    export VAULT_SKIP_VERIFY=true
+    {{- end }}
+
     # vault_reachable <addr> — returns 0 if vault API responds (any state)
     vault_reachable() {
       vault status -address="$1" > /dev/null 2>&1
@@ -66,9 +70,6 @@ data:
       fi
 
       export VAULT_ADDR=$VAULT_URL
-      {{- if .Values.recovery.fallback.tlsSkipVerify }}
-      export VAULT_SKIP_VERIFY=true
-      {{- end }}
 
       VAULT_TOKEN=$(vault write -field=token \
         "${AUTH_PATH}/login" \
@@ -92,7 +93,7 @@ data:
       echo "$SECRET_PATH"  > ${PREP_DIR}/secret-path
       [ "${VAULT_ENCRYPTED:-false}" = "true" ] && echo "true" > ${PREP_DIR}/encrypted
 
-      unset VAULT_TOKEN VAULT_SKIP_VERIFY
+      unset VAULT_TOKEN
       echo "Token prepared from ${VAULT_URL}"
 
     done

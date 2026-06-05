@@ -24,116 +24,158 @@ spec:
         - |
           VAULT_API=http://vault-0.vault-internal:8200
 
-          echo "[1/9] Waiting for Vault API at ${VAULT_API}..."
+          # ── Phase 1: Init (only on fresh cluster) ────────────────────────────
+          echo "[1] Waiting for Vault API at ${VAULT_API}..."
           until vault status -address="${VAULT_API}" > /dev/null 2>&1 || \
                 vault status -address="${VAULT_API}" 2>&1 | grep -q "Initialized"; do
             sleep 1
           done
-          echo "[1/9] Vault API reachable."
+          echo "[1] Vault API reachable."
 
+          FRESH_INIT=false
           if vault status -address="${VAULT_API}" 2>&1 | grep -q "Initialized.*true"; then
-            echo "[1/9] Vault already initialized, skipping init"
-            exit 0
+            echo "[1] Vault already initialized — skipping init, running post-config reconcile."
+          else
+            FRESH_INIT=true
+            echo "[2] Initializing Vault (keyShares={{ .Values.bootstrap.keyShares }}, keyThreshold={{ .Values.bootstrap.keyThreshold }})..."
+            export VAULT_ADDR=$VAULT_API
+            vault operator init \
+              -key-shares={{ .Values.bootstrap.keyShares }} \
+              -key-threshold={{ .Values.bootstrap.keyThreshold }} \
+              -format=json > /tmp/init.json
+            awk '/unseal_keys_b64/{f=1;next} f&&/\]/{f=0} f{gsub(/[" ,]/,"");if(length>0)print}' /tmp/init.json > /tmp/vault-unseal.txt
+            awk -F'"' '/root_token/{print $4}' /tmp/init.json > /tmp/vault-token.txt
+            echo "[2] Init done. Keys: $(wc -l < /tmp/vault-unseal.txt)"
+
+            echo "[3] Unsealing vault-0..."
+            while IFS= read -r key; do
+              printf '{"key":"%s"}' "$key" | \
+                wget -q --post-file=- \
+                  --header="Content-Type: application/json" \
+                  -O /dev/null \
+                  "${VAULT_API}/v1/sys/unseal"
+            done < /tmp/vault-unseal.txt
+            echo "[3] Unseal done. Status: $(vault status -address="${VAULT_API}" 2>&1 | grep Sealed)"
+
+            export VAULT_TOKEN=$(cat /tmp/vault-token.txt)
           fi
 
-          echo "[2/9] Initializing Vault (keyShares={{ .Values.bootstrap.keyShares }}, keyThreshold={{ .Values.bootstrap.keyThreshold }})..."
-          export VAULT_ADDR=$VAULT_API
-          vault operator init \
-            -key-shares={{ .Values.bootstrap.keyShares }} \
-            -key-threshold={{ .Values.bootstrap.keyThreshold }} \
-            -format=json > /tmp/init.json
-          awk '/unseal_keys_b64/{f=1;next} f&&/\]/{f=0} f{gsub(/[" ,]/,"");if(length>0)print}' /tmp/init.json > /tmp/vault-unseal.txt
-          awk -F'"' '/root_token/{print $4}' /tmp/init.json > /tmp/vault-token.txt
-          echo "[2/9] Init done. Keys: $(wc -l < /tmp/vault-unseal.txt)"
-
-          echo "[3/9] Unsealing vault-0..."
-          while IFS= read -r key; do
-            printf '{"key":"%s"}' "$key" | \
-              wget -q --post-file=- \
-                --header="Content-Type: application/json" \
-                -O /dev/null \
-                "${VAULT_API}/v1/sys/unseal"
-          done < /tmp/vault-unseal.txt
-          echo "[3/9] Unseal done. Status: $(vault status -address="${VAULT_API}" 2>&1 | grep Sealed)"
-
-          export VAULT_TOKEN=$(cat /tmp/vault-token.txt)
-
-          echo "[4/9] Waiting for vault-active to become available..."
+          # ── Phase 2: Post-config (runs on every install/upgrade) ─────────────
+          echo "[4] Waiting for vault-active..."
           while ! nc -z vault-active 8200; do sleep 1; done
-          echo "[4/9] vault-active ready."
           export VAULT_ADDR=http://vault-active:8200
 
-          echo "[4/9] Enabling secrets engine (KV v2)..."
-          vault secrets enable -path=secret -version=2 kv 2>&1 || echo "[4/9] Already enabled or error"
+          if ! vault status -address="${VAULT_ADDR}" > /dev/null 2>&1; then
+            echo "[4] ERROR: vault-active sealed — post-config requires unsealed Vault"
+            exit 1
+          fi
+          echo "[4] vault-active ready."
 
-          echo "[5/9] Enabling kubernetes auth..."
-          vault auth enable kubernetes 2>&1 || echo "[5/9] Already enabled or error"
+          if [ "$FRESH_INIT" = "false" ]; then
+            echo "[4] Authenticating via K8s auth (vault-bootstrap role)..."
+            export VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login \
+              role=vault-bootstrap \
+              jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
+            if [ -z "$VAULT_TOKEN" ]; then
+              echo "[4] ERROR: vault-bootstrap auth failed — role may not exist yet on first upgrade"
+              exit 1
+            fi
+            echo "[4] Bootstrap token acquired."
+          fi
 
-          echo "[5/9] Waiting for vault-reviewer-token..."
+          echo "[5] Enabling secrets engine (KV v2)..."
+          vault secrets enable -path=secret -version=2 kv 2>/dev/null || echo "[5] KV already enabled."
+
+          echo "[6] Enabling kubernetes auth..."
+          vault auth enable kubernetes 2>/dev/null || echo "[6] K8s auth already enabled."
+
+          echo "[6] Waiting for vault-reviewer-token..."
           until [ -s /var/run/secrets/vault-reviewer/token ]; do
-            echo "[5/9] Token not ready, waiting..."
             sleep 2
           done
-          echo "[5/9] Reviewer token ready."
 
-          echo "[6/9] Configuring kubernetes auth..."
+          echo "[6] Configuring kubernetes auth..."
           vault write auth/kubernetes/config \
             token_reviewer_jwt="$(cat /var/run/secrets/vault-reviewer/token)" \
             kubernetes_host=https://${KUBERNETES_PORT_443_TCP_ADDR}:443 \
             kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-            disable_iss_validation=true && \
-          echo "[6/9] K8s auth configured." || echo "[6/9] ERROR: K8s auth config failed!"
+            disable_iss_validation=true \
+            && echo "[6] K8s auth configured." \
+            || { echo "[6] ERROR: K8s auth config failed!"; exit 1; }
 
-          echo "[7/9] Writing policies..."
+          echo "[7] Writing policies..."
           for hcl_file in /mnt/config/*.hcl; do
             name=$(basename "$hcl_file" .hcl)
             vault policy write "$name" "$hcl_file" \
-              && echo "[7/9] Policy '$name' written." \
-              || echo "[7/9] ERROR: Policy '$name' failed!"
+              && echo "[7] Policy '$name' written." \
+              || { echo "[7] ERROR: Policy '$name' failed!"; exit 1; }
           done
 
-          echo "[8/9] Creating K8s auth roles..."
+          echo "[8] Creating K8s auth roles..."
           vault write auth/kubernetes/role/vault-unseal \
             bound_service_account_names=vault \
             bound_service_account_namespaces={{ .Release.Namespace }} \
             policies=vault-unseal \
-            ttl=1h && echo "[8/9] Role vault-unseal OK"
+            ttl=1h \
+            && echo "[8] Role vault-unseal OK" \
+            || { echo "[8] ERROR: Role vault-unseal failed!"; exit 1; }
           vault write auth/kubernetes/role/vault-recovery-unseal \
             bound_service_account_names=vault-recovery \
             bound_service_account_namespaces={{ .Release.Namespace }} \
             policies=vault-unseal \
             ttl=5m \
-            token_num_uses=2 && echo "[8/9] Role vault-recovery-unseal OK"
+            token_num_uses=2 \
+            && echo "[8] Role vault-recovery-unseal OK" \
+            || { echo "[8] ERROR: Role vault-recovery-unseal failed!"; exit 1; }
           vault write auth/kubernetes/role/vault-rekey \
             bound_service_account_names=vault-recovery \
             bound_service_account_namespaces={{ .Release.Namespace }} \
             policies=vault-rekey \
             ttl=15m \
-            token_num_uses=20 && echo "[8/9] Role vault-rekey OK"
+            token_num_uses=20 \
+            && echo "[8] Role vault-rekey OK" \
+            || { echo "[8] ERROR: Role vault-rekey failed!"; exit 1; }
+          vault write auth/kubernetes/role/vault-bootstrap \
+            bound_service_account_names=vault-recovery \
+            bound_service_account_namespaces={{ .Release.Namespace }} \
+            policies=vault-bootstrap \
+            ttl=10m \
+            token_num_uses=5 \
+            && echo "[8] Role vault-bootstrap OK" \
+            || { echo "[8] ERROR: Role vault-bootstrap failed!"; exit 1; }
 
           {{- if .Values.bootstrap.storeUnsealKeys }}
-          echo "[9/9] Storing unseal keys in KV..."
-          {{- if .Values.recovery.encryption.enabled }}
-          ENCRYPTED=$(cat /tmp/vault-unseal.txt \
-            | openssl enc -aes-256-cbc -pbkdf2 -pass file:/tmp/recovery-passphrase/passphrase \
-            | openssl base64 -A)
-          vault kv put {{ include "vrf.localSecretPath" . }} contents="$ENCRYPTED" && \
-          echo "[9/9] Keys stored (encrypted) at {{ include "vrf.localSecretPath" . }}" || echo "[9/9] ERROR: KV store failed!"
+          if [ "$FRESH_INIT" = "true" ]; then
+            echo "[9] Storing unseal keys in KV..."
+            {{- if .Values.recovery.encryption.enabled }}
+            ENCRYPTED=$(cat /tmp/vault-unseal.txt \
+              | openssl enc -aes-256-cbc -pbkdf2 -pass file:/tmp/recovery-passphrase/passphrase \
+              | openssl base64 -A)
+            vault kv put {{ include "vrf.localSecretPath" . }} contents="$ENCRYPTED" \
+              && echo "[9] Keys stored (encrypted) at {{ include "vrf.localSecretPath" . }}" \
+              || { echo "[9] ERROR: KV store failed!"; exit 1; }
+            {{- else }}
+            vault kv put {{ include "vrf.localSecretPath" . }} contents=@/tmp/vault-unseal.txt \
+              && echo "[9] Keys stored at {{ include "vrf.localSecretPath" . }}" \
+              || { echo "[9] ERROR: KV store failed!"; exit 1; }
+            {{- end }}
+          else
+            echo "[9] Upgrade run — skipping KV key store (keys already present)."
+          fi
           {{- else }}
-          vault kv put {{ include "vrf.localSecretPath" . }} contents=@/tmp/vault-unseal.txt && \
-          echo "[9/9] Keys stored at {{ include "vrf.localSecretPath" . }}" || echo "[9/9] ERROR: KV store failed!"
+          echo "[9] storeUnsealKeys=false, skipping KV store."
           {{- end }}
-          {{- else }}
-          echo "[9/9] storeUnsealKeys=false, skipping KV store."
-          {{- end }}
+
           echo "=== VAULT BOOTSTRAP COMPLETE ==="
-          echo "Root token és unseal keys a job pod /tmp/ könyvtárában érhetők el amíg a job fut:"
-          echo "  kubectl exec -n {{ .Release.Namespace }} <job-pod> -- cat /tmp/vault-token.txt"
-          echo "  kubectl exec -n {{ .Release.Namespace }} <job-pod> -- cat /tmp/vault-unseal.txt"
-          {{- if .Values.bootstrap.storeUnsealKeys }}
-          echo "Unseal keys KV-ban: vault kv get {{ include "vrf.localSecretPath" . }}"
-          {{- end }}
-          echo "A job pod törlésével (vagy a sleep lejártával) a fájlok véglegesen törlődnek."
+          if [ "$FRESH_INIT" = "true" ]; then
+            echo "Root token és unseal keys a job pod /tmp/ könyvtárában érhetők el amíg a job fut:"
+            echo "  kubectl exec -n {{ .Release.Namespace }} <job-pod> -- cat /tmp/vault-token.txt"
+            echo "  kubectl exec -n {{ .Release.Namespace }} <job-pod> -- cat /tmp/vault-unseal.txt"
+            {{- if .Values.bootstrap.storeUnsealKeys }}
+            echo "Unseal keys KV-ban: vault kv get {{ include "vrf.localSecretPath" . }}"
+            {{- end }}
+            echo "A job pod törlésével (vagy a sleep lejártával) a fájlok véglegesen törlődnek."
+          fi
           echo "==========================="
           sleep 3600
           rm -f /tmp/init.json /tmp/vault-unseal.txt /tmp/vault-token.txt

@@ -25,6 +25,29 @@ data:
     path "sys/internal/ui/mounts/secret/*" {
         capabilities = ["read"]
     }
+  vault-bootstrap.hcl: |
+    # Used by vault-bootstrap role on upgrades to run post-config reconcile
+    path "sys/mounts/*" {
+        capabilities = ["create", "update", "read"]
+    }
+    path "sys/auth/*" {
+        capabilities = ["create", "update", "read"]
+    }
+    path "auth/kubernetes/config" {
+        capabilities = ["create", "update", "read"]
+    }
+    path "auth/kubernetes/role/*" {
+        capabilities = ["create", "update", "read", "delete"]
+    }
+    path "sys/policies/acl/*" {
+        capabilities = ["create", "update", "read", "delete"]
+    }
+    path "secret/*" {
+        capabilities = ["create", "update", "read", "list"]
+    }
+    path "sys/internal/ui/mounts/*" {
+        capabilities = ["read"]
+    }
   vault-rekey.hcl: |
     path "secret/data/{{ $localPath }}" {
         capabilities = ["read", "create", "update"]

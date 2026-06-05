@@ -52,36 +52,52 @@ kétfázisú bootstrap-pel. Consul eltávolítva — `ha.raft.enabled: true` ese
 Integrated Raft Storage-t használ, service registration-t a `service_registration "kubernetes" {}`
 blokk adja, Consul semmilyen szerepet nem tölt be.
 
-### 1. fázis — Init job (első telepítésnél)
+### 1. fázis — Bootstrap job (post-install/upgrade, mindig fut)
 
-`vault/templates/job.yaml` (`vault-wait-job`, Helm post-install hook):
+`vault/templates/job.yaml` (`vault-wait-job`, Helm post-install/post-upgrade hook):
 
+Két logikai fázis egy jobon belül:
+
+**Phase 1 — Init (csak ha Vault még nem initialized):**
 ```
-HTTP health check → 501 = not initialized → vault operator init
-→ vault-0 unseal (curl /v1/sys/unseal)
-→ secret/ KV v2 mount enable (idempotens)
-→ Kubernetes auth enable + config (token_reviewer_jwt elhagyva — Vault 1.21+ projected token)
-→ policy write (vault-unseal, vault-rekey)
-→ K8s auth role write (vault-unseal, vault-recovery-unseal, vault-rekey)
-→ optional: secret/vault/unseal-keys (csak ha bootstrap.storeUnsealKeys=true)
-→ tmp fájlok törlése (/tmp/keys.txt, /tmp/vault-unseal.txt, /tmp/vault-token.txt)
+vault operator init → vault-0 unseal (wget /v1/sys/unseal) → root token /tmp-be
 ```
 
-**Jelenlegi állapot:** idempotens, root token nem persistálódik, token_reviewer_jwt elhagyva (Vault 1.21+ vault SA projected tokenjét használja TokenReview-hoz)
+**Phase 2 — Post-config (minden install/upgrade-on fut):**
+```
+vault-active nc wait
+→ ha FRESH_INIT=false: K8s auth login role=vault-bootstrap → token
+→ secret/ KV v2 enable (idempotens)
+→ Kubernetes auth enable + config (token_reviewer_jwt: vault-reviewer secret)
+→ policy write (vault-unseal, vault-rekey, vault-bootstrap) — fail-fast
+→ K8s auth role write (vault-unseal, vault-recovery-unseal, vault-rekey, vault-bootstrap) — fail-fast
+→ ha FRESH_INIT=true: secret/vault/unseal-keys KV store (opcionális, encryption-aware)
+→ tmp fájlok törlése
+```
+
+**Jelenlegi állapot:** idempotens post-config, root token nem persistálódik, upgrade-en vault-bootstrap role-lal re-autentikál
 
 ### 2. fázis — Auto-unseal (postStart, minden újrainduláskor)
 
-`vault/values.yaml` `postStart`:
+`vault/values.yaml` `postStart` + `extraInitContainers`:
 
 ```
-Ha vault-0 ÉS vault-active még nem él → skip
-Egyébként:
-  → HTTP health check vault-active:8200/v1/sys/health (sealed=503 is OK)
-  → raft join vault-active-hoz
-  → K8s SA JWT → auth/kubernetes/login role=vault-unseal → rövid TTL token
-  → kv get secret/vault/unseal-keys → curl PUT /v1/sys/unseal (soronként)
-  → ha nincs local unseal key (storeUnsealKeys=false): warning, pod elindul sealed
+initContainer (recovery-prep):
+  vault-0: ha vault-active nem él → exit 0 (bootstrap job kezeli)
+  vault-1/2: nc-z wait vault-active TCP-re
+  → vault-recovery-token secret JWT → auth/kubernetes/login role=vault-recovery-unseal
+  → token + vault-url + secret-path → emptyDir (Memory)
+
+postStart (configmap-poststart.yaml):
+  → emptyDir olvasás (vault-url, token, secret-path)
+  → nc-z wait vault-active TCP
+  → vault-1/2: raft join vault-active-hoz
+  → vault kv get (encrypted esetén: base64 -d | openssl dec) → unseal keys
+  → wget PUT /v1/sys/unseal soronként
+  → status retry 10s → unsealed successfully vagy log + exit 0
 ```
+
+**Auth:** vault-recovery SA long-lived token Secret (`vault-recovery-token`) — szükséges workaround, mert a pod SA (`vault`) ≠ vault-recovery SA. Lásd nyitott adósság.
 
 ---
 
@@ -161,11 +177,12 @@ A `values.yaml` `preRepoURL`-ból és `project` értékből épít fel minden te
 
 | Dimenzió | Állapot |
 |---|---|
-| Cross-cluster K8s auth (külön mountok per cluster) | Nyitott — shared auth/kubernetes mount |
-| Rekey transactional safety | Nyitott — local/fallback write nem atomi |
+| Rekey transactional safety | Nyitott — local/fallback write nem atomi; split-brain runbook szükséges |
 | AES-CBC → authenticated encryption (GCM/age/SOPS) | Roadmap |
 | bootstrap.autoInit=false production default | Nyitott |
 | Recovery successPolicy (any / quorum / all) | Nyitott — jelenleg: legalább 1 siker |
+| vault-recovery long-lived SA token | Tudatos workaround (pod SA ≠ recovery SA); rotáció/projected token jövőbeli hardening |
+| vault-bootstrap role migration (pre-bootstrap verzióról upgrade) | Manuális egyszeri lépés szükséges; NOTES.txt dokumentálja |
 
 ## Lezárt / régi adósság (ne hozd vissza)
 
@@ -174,8 +191,14 @@ A következők már **nem érvényesek** a jelenlegi chartra:
 | Régi probléma | Lezárás |
 |---|---|
 | vault/vault hardkódolt userpass | M3-ban eltávolítva |
-| nem idempotens init job | HTTP 501 check javította |
+| nem idempotens init job | Phase 1/2 szétválasztás; post-config upgrade-en is fut |
 | `tail -f /dev/null` root token | eltávolítva M3-ban |
 | hardkódolt kube-api-access volume | eltávolítva M2-ben |
 | root token KV-ban marad | nem persistálódik, tmp fájlok törlődnek |
 | duplikált ClusterRoleBinding | M1-ben javítva, Release.Name alapú nevek |
+| shared auth/kubernetes mount mesh-ben | javítva — cluster-specifikus path (k8sAuthPath) |
+| tlsSkipVerify precheck előtt | javítva — script elején exportálódik |
+| recovery-job token path hiányzott | javítva — vault-recovery-token explicit mount |
+| encrypted rekey current keys nem decryptált | javítva — base64 -d + openssl dec |
+| vault-unseal policy preflight hiányzott | javítva — sys/internal/ui/mounts/secret/* |
+| sleep 3600 Helm hook timeout | eltávolítva |

@@ -9,23 +9,31 @@ data:
   README: |
     Cross-cluster recovery mesh setup
     ===================================
-    Run these steps on the FALLBACK Vault cluster to allow this cluster's
-    recovery job to authenticate and read unseal keys.
+    Terminology:
+      SOURCE cluster  = THIS cluster ({{ .Values.recovery.selfName }}) — the one being recovered
+      FALLBACK cluster = the cluster that holds recovery material for the source
 
-    1. Enable a CLUSTER-SPECIFIC Kubernetes auth mount on the fallback Vault:
+    Run these steps on the FALLBACK Vault cluster to allow this source cluster's
+    recovery job to authenticate and read its unseal keys.
 
-       IMPORTANT: Do NOT use the shared "auth/kubernetes" mount.
+    1. Enable a SOURCE-CLUSTER-SPECIFIC Kubernetes auth mount on the FALLBACK Vault:
+
+       IMPORTANT: Do NOT use the shared "auth/kubernetes" mount on the fallback Vault.
        Each source cluster needs its own auth path to avoid overwriting the
        fallback Vault's own Kubernetes auth configuration.
 
+       # On the FALLBACK cluster:
        vault auth enable -path={{ .Values.recovery.fallback.k8sAuthPath }} kubernetes
 
-    2. Configure the cluster-specific Kubernetes auth on the fallback Vault:
+    2. Configure the source-cluster Kubernetes auth on the FALLBACK Vault:
 
+       # token_reviewer_jwt: a service account token from the FALLBACK cluster
+       # kubernetes_host:    the SOURCE cluster's Kubernetes API endpoint
+       # kubernetes_ca_cert: the SOURCE cluster's CA certificate
        vault write {{ .Values.recovery.fallback.k8sAuthPath }}/config \
-         token_reviewer_jwt="<fallback-vault-sa-token>" \
-         kubernetes_host="<THIS-cluster-k8s-api>" \
-         kubernetes_ca_cert="<THIS-cluster-ca-cert>"
+         token_reviewer_jwt="<FALLBACK-cluster-sa-token>" \
+         kubernetes_host="<SOURCE-cluster-k8s-api>" \
+         kubernetes_ca_cert="<SOURCE-cluster-ca-cert>"
 
     3. Create a policy on the fallback Vault for this cluster's recovery material:
 

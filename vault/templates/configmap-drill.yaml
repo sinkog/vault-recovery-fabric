@@ -26,7 +26,7 @@ data:
        kubectl logs -n {{ .Release.Namespace }} job/vault-rekey-job -f
 
     4. Verify new keys in local KV:
-       vault kv get secret/vault/unseal-keys
+       vault kv get {{ include "vrf.localSecretPath" . }}
 
     5. Verify fallback vault has new keys:
        VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<fallback-addr>" }} \
@@ -43,11 +43,28 @@ data:
   recovery-drill.md: |
     # Recovery Drill Procedure
 
-    Goal: validate that recovery works before a real outage.
+    Goal: validate the full recovery chain before a real outage.
+    Each step is a mandatory validation gate — a drill is only successful if ALL pass.
     Run in a non-production environment.
 
+    ## Pre-drill checks
+
+    0a. Verify fallback Vault is reachable and unsealed:
+        VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} vault status
+
+    0b. Verify fallback auth mount exists for this cluster:
+        VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
+          vault auth list | grep {{ .Values.recovery.fallback.k8sAuthPath | default "auth/kubernetes" }}
+
+    0c. Verify recovery material exists on fallback Vault:
+        VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
+          vault kv get {{ include "vrf.fallbackSecretPath" . }} 2>/dev/null \
+          && echo "PASS: recovery material present" || echo "FAIL: no recovery material"
+
+    ## Drill execution
+
     1. Seal vault manually:
-       vault operator seal
+       kubectl exec -n {{ .Release.Namespace }} vault-0 -- vault operator seal
 
     2. Trigger recovery job with a unique ID:
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
@@ -58,12 +75,49 @@ data:
 
     3. Monitor recovery:
        kubectl logs -n {{ .Release.Namespace }} -l app=vault-recovery --prefix -f
-       # or: kubectl get jobs -n {{ .Release.Namespace }} -l app=vault-recovery
 
-    4. Verify vault is unsealed:
-       vault status | grep "Sealed.*false"
+    ## Post-drill validation (all must pass)
 
-    5. Reset triggerId:
+    4. Vault unsealed:
+       kubectl exec -n {{ .Release.Namespace }} vault-0 -- vault status \
+         | grep "Sealed.*false" && echo "PASS" || echo "FAIL"
+
+    5. Fallback auth login works (simulates what recovery-prep does):
+       kubectl run drill-auth-test --rm -it --restart=Never \
+         --image=hashicorp/vault:{{ .Values.vault.server.image.tag | default "1.21.2" }} \
+         --serviceaccount=vault-recovery -n {{ .Release.Namespace }} \
+         -- vault write -address={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
+              -field=token {{ .Values.recovery.fallback.k8sAuthPath }}/login \
+              role={{ .Values.recovery.fallback.vaultRole }} \
+              jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+         && echo "PASS: fallback auth login" || echo "FAIL: fallback auth login"
+
+    6. KV read works (recovery material readable):
+       VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
+         vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} > /dev/null \
+         && echo "PASS: KV read" || echo "FAIL: KV read"
+
+    {{- if .Values.recovery.encryption.enabled }}
+    7. Decrypt works (passphrase + encrypted blob):
+       VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
+         vault kv get -field=contents {{ include "vrf.fallbackSecretPath" . }} \
+         | openssl base64 -d \
+         | openssl enc -d -aes-256-cbc -pbkdf2 \
+              -pass file:<(kubectl get secret {{ .Values.recovery.encryption.passphraseSecret }} \
+                -n {{ .Release.Namespace }} -o jsonpath='{.data.passphrase}' | base64 -d) \
+         | grep -c . | grep -q "^[1-9]" \
+         && echo "PASS: decrypt" || echo "FAIL: decrypt"
+    {{- end }}
+
+    8. Audit events present:
+       kubectl exec -n {{ .Release.Namespace }} vault-0 -- \
+         sh -c 'vault audit list 2>/dev/null | grep -q file \
+           && grep "auth/kubernetes/login" /vault/audit/vault-audit.log | tail -1 \
+           && echo "PASS: audit events" || echo "SKIP: audit log not enabled"'
+
+    ## Cleanup
+
+    9. Reset triggerId:
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --reuse-values \
          --set recovery.manualJob.triggerId=""
@@ -94,6 +148,52 @@ data:
          --set recovery.manualJob.triggerId=""
 
     5. Verify cascade recovery on all peers.
+
+  rekey-splitbrain-runbook.md: |
+    # Rekey Split-Brain Recovery Runbook
+
+    Scenario: rekey job updated local KV but failed before updating fallback Vault.
+    Result: local has new keys, fallback has old keys — recovery job will fail.
+
+    ## Detection
+
+    1. Check rekey job logs for partial failure:
+       kubectl logs -n {{ .Release.Namespace }} job/vault-rekey-job | grep -E "Local KV updated|Fallback vault|ERROR"
+
+    2. Compare key versions:
+       # Local:
+       vault kv metadata get {{ include "vrf.localSecretPath" . }} | grep version
+       # Fallback:
+       VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
+         vault kv metadata get {{ include "vrf.fallbackSecretPath" . }} | grep version
+
+    ## Recovery options
+
+    ### Option A — Re-sync fallback from local (preferred if local keys are valid)
+
+    1. Read new keys from local KV (requires vault-bootstrap or root token):
+       {{- if .Values.recovery.encryption.enabled }}
+       LOCAL_ENCRYPTED=$(vault kv get -field=contents {{ include "vrf.localSecretPath" . }})
+       {{- else }}
+       LOCAL_KEYS=$(vault kv get -field=contents {{ include "vrf.localSecretPath" . }})
+       {{- end }}
+
+    2. Write to fallback Vault (requires write-capable role or admin token):
+       VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
+         vault kv put {{ include "vrf.fallbackSecretPath" . }} contents="$LOCAL_ENCRYPTED"
+
+    3. Verify and run drill to confirm recovery chain is intact.
+
+    ### Option B — Trigger full rekey again
+
+    If local key validity is uncertain, run a new rekey cycle (see rekey-procedure.md).
+    This generates fresh keys and re-syncs both sides atomically.
+
+    ## Prevention
+
+    syncFallback=true should only be enabled in environments where fallback Vault
+    is reliably reachable. Network partitions during rekey create this split-brain state.
+    Consider disabling syncFallback and using out-of-band key distribution instead.
 
   audit-requirements.md: |
     # Audit Log Requirements

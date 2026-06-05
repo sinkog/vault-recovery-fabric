@@ -1,6 +1,9 @@
 # Debug shell pod: recovery-prep sidecar + main debug container
 # Both containers just sleep — exec into either to debug manually.
 #
+# WARNING: This pod uses the 'vault' ServiceAccount which has system:auth-delegator
+# (TokenReview) ClusterRoleBinding. DO NOT APPLY IN PRODUCTION clusters.
+#
 # Apply:
 #   kubectl --context paynance-mgm apply -f debug/debug-shell.yaml -n vault-test
 #   kubectl --context paynance-mgm apply -f debug/debug-shell.yaml -n vault-2

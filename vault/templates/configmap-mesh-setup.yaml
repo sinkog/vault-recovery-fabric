@@ -41,12 +41,30 @@ data:
        }
        EOF
 
-    4. Create a Kubernetes auth role on the fallback Vault:
+    4. Create a Kubernetes auth role on the fallback Vault (read-only recovery):
 
        vault write {{ .Values.recovery.fallback.k8sAuthPath }}/role/{{ .Values.recovery.fallback.vaultRole }} \
          bound_service_account_names=vault-recovery \
          bound_service_account_namespaces={{ .Release.Namespace }} \
          policies={{ .Values.recovery.selfName }}-recovery \
+         ttl=5m \
+         token_num_uses=2
+
+    4b. [OPTIONAL — only if rekey.syncFallback=true] Create a write-capable role and policy:
+
+       vault policy write {{ .Values.recovery.selfName }}-recovery-rekey - <<EOF
+       path "secret/data/{{ $fbDataPath }}" {
+         capabilities = ["create", "update", "read"]
+       }
+       path "secret/metadata/{{ $fbDataPath }}" {
+         capabilities = ["read", "list"]
+       }
+       EOF
+
+       vault write {{ .Values.recovery.fallback.k8sAuthPath }}/role/{{ .Values.recovery.fallback.rekeyVaultRole | default "vault-recovery-rekey-sync" }} \
+         bound_service_account_names=vault-recovery \
+         bound_service_account_namespaces={{ .Release.Namespace }} \
+         policies={{ .Values.recovery.selfName }}-recovery-rekey \
          ttl=5m \
          token_num_uses=2
 

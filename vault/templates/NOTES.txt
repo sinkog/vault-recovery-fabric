@@ -27,3 +27,13 @@ Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --reuse-values -
 
 Drill procedures: kubectl get configmap vault-recovery-drill -n {{ .Release.Namespace }} -o jsonpath='{.data}'
 Mesh setup:      kubectl get configmap vault-mesh-setup -n {{ .Release.Namespace }} -o jsonpath='{.data.README}' 2>/dev/null || echo "Set recovery.selfName to enable mesh setup guide"
+
+UPGRADE NOTE: If upgrading from a version that predates the vault-bootstrap role,
+the bootstrap job post-config phase will fail with "vault-bootstrap auth failed".
+One-time fix: obtain a root or admin token and run manually:
+  vault policy write vault-bootstrap /path/to/vault-bootstrap.hcl
+  vault write auth/kubernetes/role/vault-bootstrap \
+    bound_service_account_names=vault-recovery \
+    bound_service_account_namespaces={{ .Release.Namespace }} \
+    policies=vault-bootstrap ttl=10m token_num_uses=5
+Then re-run: helm upgrade vault ./vault -n {{ .Release.Namespace }} --reuse-values

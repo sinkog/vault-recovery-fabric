@@ -12,6 +12,7 @@ recovery:
     addr: "https://vault.kube-vault-b.example.com:8200"
     k8sAuthPath: "auth/kubernetes-vault-a"
     vaultRole: "vault-recovery-unseal"
+    rekeyVaultRole: "vault-recovery-rekey-sync"
     secretPath: ""
     tlsSkipVerify: false
     cidr: "10.0.0.0/8"

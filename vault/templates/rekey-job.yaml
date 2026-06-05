@@ -114,7 +114,7 @@ spec:
           export VAULT_ADDR={{ .Values.recovery.fallback.addr }}
           FALLBACK_TOKEN=$(vault write -field=token \
             {{ .Values.recovery.fallback.k8sAuthPath }}/login \
-            role={{ .Values.recovery.fallback.vaultRole }} \
+            role={{ .Values.recovery.fallback.rekeyVaultRole | default .Values.recovery.fallback.vaultRole }} \
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
           VAULT_TOKEN="$FALLBACK_TOKEN" vault kv put \
             {{ include "vrf.fallbackSecretPath" . }} contents="$STORE_VALUE"

@@ -21,6 +21,7 @@ recovery:
     addr: ""
     k8sAuthPath: "auth/kubernetes"
     vaultRole: "vault-recovery-unseal"
+    rekeyVaultRole: ""  # role for rekey syncFallback write; defaults to vaultRole if empty
     secretPath: ""
     tlsSkipVerify: false
     cidr: ""

@@ -10,7 +10,7 @@ recovery:
   selfName: "vault-a"
   fallback:
     addr: "https://vault.kube-vault-b.example.com:8200"
-    k8sAuthPath: "auth/kubernetes"
+    k8sAuthPath: "auth/kubernetes-vault-a"
     vaultRole: "vault-recovery-unseal"
     secretPath: ""
     tlsSkipVerify: false
@@ -48,6 +48,9 @@ vault:
           items:
             - key: passphrase
               path: passphrase
+      - name: vault-recovery-token
+        secret:
+          secretName: vault-recovery-token
     volumeMounts:
       - name: recovery-prep
         mountPath: /vault/recovery-prep

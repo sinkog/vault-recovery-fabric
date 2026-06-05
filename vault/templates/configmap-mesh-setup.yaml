@@ -12,14 +12,22 @@ data:
     Run these steps on the FALLBACK Vault cluster to allow this cluster's
     recovery job to authenticate and read unseal keys.
 
-    1. Configure Kubernetes auth for this cluster on the fallback Vault:
+    1. Enable a CLUSTER-SPECIFIC Kubernetes auth mount on the fallback Vault:
 
-       vault write auth/kubernetes/config \
+       IMPORTANT: Do NOT use the shared "auth/kubernetes" mount.
+       Each source cluster needs its own auth path to avoid overwriting the
+       fallback Vault's own Kubernetes auth configuration.
+
+       vault auth enable -path={{ .Values.recovery.fallback.k8sAuthPath }} kubernetes
+
+    2. Configure the cluster-specific Kubernetes auth on the fallback Vault:
+
+       vault write {{ .Values.recovery.fallback.k8sAuthPath }}/config \
          token_reviewer_jwt="<fallback-vault-sa-token>" \
          kubernetes_host="<THIS-cluster-k8s-api>" \
          kubernetes_ca_cert="<THIS-cluster-ca-cert>"
 
-    2. Create a policy on the fallback Vault for this cluster's recovery material:
+    3. Create a policy on the fallback Vault for this cluster's recovery material:
 
        NOTE: KV v2 policy path requires secret/data/<path> prefix (not secret/<path>).
        The CLI uses secret/<path>, but policies must reference the API path.
@@ -33,18 +41,16 @@ data:
        }
        EOF
 
-    3. Create a Kubernetes auth role on the fallback Vault:
+    4. Create a Kubernetes auth role on the fallback Vault:
 
-       vault write auth/kubernetes/role/{{ .Values.recovery.fallback.vaultRole }} \
-         bound_service_account_names=vault-recovery,vault \
+       vault write {{ .Values.recovery.fallback.k8sAuthPath }}/role/{{ .Values.recovery.fallback.vaultRole }} \
+         bound_service_account_names=vault-recovery \
          bound_service_account_namespaces={{ .Release.Namespace }} \
          policies={{ .Values.recovery.selfName }}-recovery \
          ttl=5m \
          token_num_uses=2
-       NOTE: bound_service_account_names includes both 'vault-recovery' (recovery Job)
-             and 'vault' (pod-level postStart via initContainer recovery-prep)
 
-    4a. [LAB ONLY] Store raw unseal keys on the fallback Vault:
+    5a. [LAB ONLY] Store raw unseal keys on the fallback Vault:
 
        WARNING: raw key storage is for local testing only.
        Do not use in production — use the encrypted flow below.
@@ -52,7 +58,7 @@ data:
        vault kv put {{ $fbPath }} \
          contents=@/tmp/vault-unseal.txt
 
-    4b. [PRODUCTION] Store encrypted recovery material on the fallback Vault:
+    5b. [PRODUCTION] Store encrypted recovery material on the fallback Vault:
 
        # Create passphrase on THIS cluster
        kubectl create secret generic vault-recovery-passphrase \
@@ -79,7 +85,7 @@ data:
        VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-VAULT-ADDR>" }} \
          vault kv put {{ $fbPath }} contents="$ENCRYPTED"
 
-    5. Trigger recovery:
+    6. Trigger recovery:
 
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --reuse-values \
@@ -87,7 +93,7 @@ data:
          --set recovery.fallback.addr={{ .Values.recovery.fallback.addr | default "<FALLBACK-VAULT-ADDR>" }} \
          --set recovery.fallback.cidr={{ .Values.recovery.fallback.cidr | default "<FALLBACK-VAULT-CIDR>" }}
 
-    6. Reset after recovery:
+    7. Reset after recovery:
 
        helm upgrade vault ./vault -n {{ .Release.Namespace }} \
          --reuse-values \

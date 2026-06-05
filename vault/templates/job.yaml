@@ -177,7 +177,6 @@ spec:
             echo "A job pod törlésével (vagy a sleep lejártával) a fájlok véglegesen törlődnek."
           fi
           echo "==========================="
-          sleep 3600
           rm -f /tmp/init.json /tmp/vault-unseal.txt /tmp/vault-token.txt
         volumeMounts:
         - name: config-volume

@@ -48,11 +48,18 @@ spec:
             jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
           export VAULT_TOKEN
 
+          {{- if .Values.recovery.encryption.enabled }}
+          vault kv get -field=contents {{ include "vrf.localSecretPath" . }} \
+            | openssl base64 -d \
+            | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/encryption/passphrase \
+            | grep -v '^$' > /tmp/current-keys.txt
+          {{- else }}
           vault kv get -field=contents {{ include "vrf.localSecretPath" . }} \
             | grep -v '^$' > /tmp/current-keys.txt
+          {{- end }}
 
           if [ ! -s /tmp/current-keys.txt ]; then
-            echo "No current unseal keys found in KV"
+            echo "No current unseal keys found in KV (decrypt failed or keys missing)"
             exit 1
           fi
 

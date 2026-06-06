@@ -48,7 +48,7 @@ data:
     Run in a non-production environment.
 
     ## Pre-drill checks
-
+    {{- if .Values.recovery.selfName }}
     0a. Verify fallback Vault is reachable and unsealed:
         VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} vault status
 
@@ -60,6 +60,10 @@ data:
         VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
           vault kv get {{ include "vrf.fallbackSecretPath" . }} 2>/dev/null \
           && echo "PASS: recovery material present" || echo "FAIL: no recovery material"
+    {{- else }}
+    NOTE: Pre-drill fallback checks require recovery.selfName to be set (mesh mode).
+          In lab mode (selfName empty), skip to Drill execution.
+    {{- end }}
 
     ## Drill execution
 
@@ -82,13 +86,14 @@ data:
        kubectl exec -n {{ .Release.Namespace }} vault-0 -- vault status \
          | grep "Sealed.*false" && echo "PASS" || echo "FAIL"
 
+    {{- if .Values.recovery.selfName }}
     5. Fallback auth login works (simulates what recovery-prep does):
        kubectl run drill-auth-test --rm -it --restart=Never \
          --image=hashicorp/vault:{{ .Values.vault.server.image.tag | default "1.21.2" }} \
          --serviceaccount=vault-recovery -n {{ .Release.Namespace }} \
          -- vault write -address={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
-              -field=token {{ .Values.recovery.fallback.k8sAuthPath }}/login \
-              role={{ .Values.recovery.fallback.vaultRole }} \
+              -field=token {{ .Values.recovery.fallback.k8sAuthPath | default "auth/kubernetes" }}/login \
+              role={{ .Values.recovery.fallback.vaultRole | default "<VAULT-ROLE>" }} \
               jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
          && echo "PASS: fallback auth login" || echo "FAIL: fallback auth login"
 
@@ -107,6 +112,9 @@ data:
                 -n {{ .Release.Namespace }} -o jsonpath='{.data.passphrase}' | base64 -d) \
          | grep -c . | grep -q "^[1-9]" \
          && echo "PASS: decrypt" || echo "FAIL: decrypt"
+    {{- end }}
+    {{- else }}
+    5-7. Fallback auth/KV/decrypt checks require recovery.selfName (mesh mode). Skipped in lab.
     {{- end }}
 
     8. Audit events present:
@@ -163,9 +171,11 @@ data:
     2. Compare key versions:
        # Local:
        vault kv metadata get {{ include "vrf.localSecretPath" . }} | grep version
+       {{- if .Values.recovery.selfName }}
        # Fallback:
        VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
          vault kv metadata get {{ include "vrf.fallbackSecretPath" . }} | grep version
+       {{- end }}
 
     ## Recovery options
 
@@ -178,9 +188,11 @@ data:
        LOCAL_KEYS=$(vault kv get -field=contents {{ include "vrf.localSecretPath" . }})
        {{- end }}
 
+    {{- if .Values.recovery.selfName }}
     2. Write to fallback Vault (requires write-capable role or admin token):
        VAULT_ADDR={{ .Values.recovery.fallback.addr | default "<FALLBACK-ADDR>" }} \
          vault kv put {{ include "vrf.fallbackSecretPath" . }} contents="$LOCAL_ENCRYPTED"
+    {{- end }}
 
     3. Verify and run drill to confirm recovery chain is intact.
 

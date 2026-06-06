@@ -142,7 +142,7 @@ spec:
             bound_service_account_namespaces={{ .Release.Namespace }} \
             policies=vault-bootstrap \
             ttl=10m \
-            token_num_uses=5 \
+            token_num_uses=0 \
             && echo "[8] Role vault-bootstrap OK" \
             || { echo "[8] ERROR: Role vault-bootstrap failed!"; exit 1; }
 

@@ -5,8 +5,6 @@ metadata:
 data:
   poststart.sh: |
     #!/bin/sh
-    # Redirect output to main process stdout so it appears in kubectl logs
-    exec 1>/proc/1/fd/1 2>/proc/1/fd/2
     # Unseal script — used by both postStart (pod) and recovery-job main container.
     #
     # Environment variables:
@@ -43,23 +41,24 @@ data:
 
     SECRET_PATH=$(cat ${PREP_DIR}/secret-path)
     echo "[poststart] secret-path: ${SECRET_PATH}"
-    export VAULT_ADDR=$VAULT_URL
-    export VAULT_TOKEN=$(cat ${PREP_DIR}/vault-token)
+    VAULT_TOKEN=$(cat ${PREP_DIR}/vault-token)
     rm -f ${PREP_DIR}/vault-url \
           ${PREP_DIR}/vault-token \
           ${PREP_DIR}/secret-path
 
-    echo "[poststart] fetching unseal keys from ${VAULT_URL}${SECRET_PATH}..."
+    echo "[poststart] fetching unseal keys from ${VAULT_URL} at ${SECRET_PATH}..."
     if [ -f ${PREP_DIR}/encrypted ]; then
-      UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" \
+      UNSEAL_KEYS=$(VAULT_TOKEN="$VAULT_TOKEN" VAULT_ADDR="$VAULT_URL" \
+        vault kv get -field=contents "$SECRET_PATH" \
         | openssl base64 -d \
         | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/vault/recovery-passphrase/passphrase \
         | grep -v '^$' 2>/dev/null)
       rm -f ${PREP_DIR}/encrypted
     else
-      UNSEAL_KEYS=$(vault kv get -field=contents "$SECRET_PATH" 2>/dev/null | grep -v '^$')
+      UNSEAL_KEYS=$(VAULT_TOKEN="$VAULT_TOKEN" VAULT_ADDR="$VAULT_URL" \
+        vault kv get -field=contents "$SECRET_PATH" 2>/dev/null | grep -v '^$')
     fi
-    unset VAULT_TOKEN VAULT_ADDR
+    unset VAULT_TOKEN
 
     if [ -z "$UNSEAL_KEYS" ]; then
       echo "[poststart] No unseal keys retrieved — staying sealed"

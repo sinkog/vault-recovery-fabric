@@ -33,7 +33,9 @@ spec:
           echo "[1] Vault API reachable."
 
           FRESH_INIT=false
-          if vault status -address="${VAULT_API}" 2>&1 | grep -q "Initialized.*true"; then
+          vault status -format=json -address="${VAULT_API}" 2>/dev/null \
+            | grep -q '"initialized": *true'
+          if [ $? -eq 0 ]; then
             echo "[1] Vault already initialized — skipping init, running post-config reconcile."
           else
             FRESH_INIT=true

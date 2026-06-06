@@ -52,6 +52,9 @@ spec:
     - podSelector:
         matchLabels:
           app.kubernetes.io/name: vault
+    - podSelector:
+        matchLabels:
+          app: vault-debug
     ports:
     - port: 8200
       protocol: TCP

@@ -82,8 +82,9 @@
             "k8sAuthPath":   { "type": "string", "description": "Kubernetes auth mount path on the fallback Vault (default: auth/kubernetes)" },
             "vaultRole":     { "type": "string", "description": "K8s auth role on the fallback Vault that accepts this cluster's vault and vault-recovery service account tokens" },
             "secretPath":    { "type": "string", "description": "KV path on the fallback Vault where this cluster's recovery material is stored. Derived from selfName if empty." },
-            "tlsSkipVerify": { "type": "boolean", "description": "Skip TLS verification for the fallback Vault connection. Never use true in production." },
-            "cidr":          { "type": "string", "description": "CIDR of the fallback Vault for NetworkPolicy egress. Required when networkPolicy.enabled=true and triggerId is set." }
+            "tlsSkipVerify":    { "type": "boolean", "description": "Skip TLS verification for the fallback Vault connection. Never use true in production." },
+            "cidr":             { "type": "string", "description": "CIDR of the fallback Vault for NetworkPolicy egress. Required when networkPolicy.enabled=true and triggerId is set." },
+            "rekeyVaultRole":   { "type": "string", "description": "K8s auth role on the fallback Vault for rekey syncFallback write. Defaults to vaultRole if empty. Requires write capability on the fallback KV path." }
           }
         },
         "rekey": {
@@ -108,23 +109,24 @@
           }
         }
       },
-      "if": {
-        "properties": {
-          "manualJob": {
-            "properties": { "triggerId": { "minLength": 1 } }
+      "allOf": [
+        {
+          "if": {
+            "properties": { "manualJob": { "properties": { "triggerId": { "minLength": 1 } } } }
+          },
+          "then": {
+            "properties": { "fallback": { "properties": { "addr": { "minLength": 1 } }, "required": ["addr"] } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "selfName": { "minLength": 1 } }
+          },
+          "then": {
+            "properties": { "fallback": { "properties": { "tlsSkipVerify": { "enum": [false] } } } }
           }
         }
-      },
-      "then": {
-        "properties": {
-          "fallback": {
-            "properties": {
-              "addr": { "type": "string", "minLength": 1 }
-            },
-            "required": ["addr"]
-          }
-        }
-      }
+      ]
     },
     "vault": {
       "type": "object",

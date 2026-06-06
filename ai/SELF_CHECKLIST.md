@@ -20,7 +20,7 @@
 - [ ] `contents` mező neve változatlan (path változhat selfName alapján)
 - [ ] `vault-unseal` auth path és policy neve változatlan
 - [ ] `vault-0` initiator logika megőrzött
-- [ ] Ha `recovery.selfName` van beállítva, `bootstrap.storeUnsealKeys` legyen false (postStart nem a derived pathot olvassa)
+- [ ] Ha `recovery.selfName` van beállítva, `bootstrap.store.k8sSecret.enabled` legyen false (postStart nem a derived pathot olvassa)
 
 ## Kubernetes / RBAC
 

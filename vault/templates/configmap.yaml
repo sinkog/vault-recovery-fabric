@@ -4,8 +4,8 @@
 {{- if gt (int .Values.bootstrap.keyThreshold) (int .Values.bootstrap.keyShares) }}
 {{- fail (printf "bootstrap.keyThreshold (%d) must be <= bootstrap.keyShares (%d)" (int .Values.bootstrap.keyThreshold) (int .Values.bootstrap.keyShares)) }}
 {{- end }}
-{{- if and .Values.recovery.selfName .Values.bootstrap.storeUnsealKeys }}
-{{- fail "bootstrap.storeUnsealKeys=true is only supported in legacy/lab mode without recovery.selfName. In mesh mode, set bootstrap.storeUnsealKeys=false and use the recovery Job for unsealing." }}
+{{- if and .Values.recovery.selfName .Values.bootstrap.store.k8sSecret.enabled }}
+{{- fail "bootstrap.store.k8sSecret.enabled=true is intended for lab/operator use. In mesh mode (recovery.selfName set), disable k8sSecret and use the recovery Job for unsealing." }}
 {{- end }}
 {{- $localPath := trimPrefix "secret/" (include "vrf.localSecretPath" .) }}
 apiVersion: v1

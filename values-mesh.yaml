@@ -1,5 +1,8 @@
 bootstrap:
-  storeUnsealKeys: false
+  holdInitMaterialSeconds: 0
+  store:
+    k8sSecret:
+      enabled: false
 
 networkPolicy:
   enabled: true

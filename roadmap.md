@@ -355,7 +355,9 @@ bootstrap:
   enabled: true
   mode: init-primary
   storeRootToken: false
-  storeUnsealKeysLocally: false
+  store:
+    k8sSecret:
+      enabled: false
   debugOutput: false
 
 recoveryFabric:

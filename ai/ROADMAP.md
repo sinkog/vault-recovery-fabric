@@ -3,7 +3,7 @@
 > **Historical design notes. Not authoritative for current chart behavior.**
 > A korai mérföldkövek (`recovery.enabled`, `rekey.enabled` egyszerű flag) felváltotta:
 > `recovery.manualJob.triggerId` alapú trigger, `rekey.enabled+confirm+experimental` triple gate,
-> `bootstrap.storeUnsealKeys=false` default, `{{ .Release.Name }}`-alapú RBAC nevek.
+> `bootstrap.store.k8sSecret.enabled=false` default, `{{ .Release.Name }}`-alapú RBAC nevek.
 > A lenti szöveg az eredeti tervezési döntések kontextusát őrzi.
 
 A teljes fejlesztési kontextus: `context.md`

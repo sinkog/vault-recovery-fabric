@@ -36,14 +36,14 @@ Full outage: operator manually unseals one cluster (manual seed), the mesh recov
 vault/
   server (StatefulSet, 3 replicas)
     Integrated Raft storage
-    postStart: auto-unseal via K8s auth → local KV (requires bootstrap.storeUnsealKeys=true)
+    postStart: auto-unseal via K8s auth → local KV (requires bootstrap.store.k8sSecret.enabled=true)
                if no local keys found: logs warning, pod starts sealed
     serviceAccount: vault
 
   vault-wait-job (init, runs once)
     serviceAccount: vault-recovery
     Initializes vault, configures K8s auth
-    Stores unseal keys in KV only if bootstrap.storeUnsealKeys=true
+    Stores unseal keys in KV only if bootstrap.store.k8sSecret.enabled=true
 
   vault-recovery-job (on-demand, triggered by recovery.manualJob.triggerId=<unique-event-id>)
     serviceAccount: vault-recovery

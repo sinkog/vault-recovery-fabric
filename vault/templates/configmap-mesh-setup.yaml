@@ -99,7 +99,7 @@ data:
        # The unseal keys were printed by vault operator init — store them securely
        # and reference them here. Do NOT read from local KV in production.
        LOCAL_KEYS=$(cat /secure/bootstrap/{{ .Values.recovery.selfName | default "<this-vault>" }}-unseal-keys.txt)
-       # Lab-only alternative (requires bootstrap.storeUnsealKeys=true):
+       # Lab-only alternative (local KV, requires vault-active to be unsealed):
        # LOCAL_KEYS=$(vault kv get -field=contents secret/vault/unseal-keys)
 
        # Encrypt and write to FALLBACK Vault

@@ -11,9 +11,24 @@ networkPolicy:
 
 bootstrap:
   enabled: true
-  storeUnsealKeys: true
   keyShares: 5
   keyThreshold: 3
+  # holdInitMaterialSeconds: operator window to kubectl cp /tmp/vault-token.txt and
+  # /tmp/vault-unseal.txt from the job pod before they are deleted.
+  # 0 = no hold, job completes immediately (Helm-friendly).
+  # >0 = job sleeps this many seconds; requires --timeout on helm install/upgrade.
+  holdInitMaterialSeconds: 3600
+
+  store:
+    # primary: Vault KV — always written on fresh init.
+    # Path: secret/vault/unseal-keys (lab) or secret/recovery/<selfName>/unseal-keys (mesh).
+    # This is not a flag — primary KV write always happens.
+
+    # secondary: K8s Secret — operator out-of-band backup, accessible without Vault.
+    # Stores unseal-keys and root-token in plaintext (protected by K8s RBAC).
+    k8sSecret:
+      enabled: false
+      name: "vault-init-material"
 
 recovery:
   selfName: ""

@@ -28,6 +28,33 @@ Reset:   helm upgrade vault ./vault -n {{ .Release.Namespace }} --reuse-values -
 Drill procedures: kubectl get configmap vault-recovery-drill -n {{ .Release.Namespace }} -o jsonpath='{.data}'
 Mesh setup:      kubectl get configmap vault-mesh-setup -n {{ .Release.Namespace }} -o jsonpath='{.data.README}' 2>/dev/null || echo "Set recovery.selfName to enable mesh setup guide"
 
+{{- if gt (int .Values.bootstrap.holdInitMaterialSeconds) 0 }}
+
+=== INIT MATERIAL RETRIEVAL ({{ .Values.bootstrap.holdInitMaterialSeconds }}s window) ===
+On fresh install, the bootstrap job holds /tmp for {{ .Values.bootstrap.holdInitMaterialSeconds }}s.
+Retrieve with kubectl cp while vault-wait-job pod is running:
+
+  JOB=$(kubectl get pod -n {{ .Release.Namespace }} -l app=vault-wait \
+    -o jsonpath='{.items[0].metadata.name}')
+  kubectl cp {{ .Release.Namespace }}/$JOB:/tmp/vault-token.txt  ./vault-root-token.txt
+  kubectl cp {{ .Release.Namespace }}/$JOB:/tmp/vault-unseal.txt ./vault-unseal-keys.txt
+
+Store these securely. The files are deleted when the hold period expires.
+
+NOTE: helm install/upgrade requires --timeout to match holdInitMaterialSeconds:
+  helm upgrade -i vault ./vault -n {{ .Release.Namespace }} --timeout {{ .Values.bootstrap.holdInitMaterialSeconds }}s
+{{- end }}
+{{- if .Values.bootstrap.store.k8sSecret.enabled }}
+
+=== K8S SECRET BACKUP ===
+Init material also stored in K8s Secret {{ .Values.bootstrap.store.k8sSecret.name }}:
+
+  kubectl get secret {{ .Values.bootstrap.store.k8sSecret.name }} -n {{ .Release.Namespace }} \
+    -o jsonpath='{.data.unseal-keys}' | base64 -d
+  kubectl get secret {{ .Values.bootstrap.store.k8sSecret.name }} -n {{ .Release.Namespace }} \
+    -o jsonpath='{.data.root-token}' | base64 -d
+{{- end }}
+
 UPGRADE NOTE: If upgrading from a version that predates the vault-bootstrap role,
 the bootstrap job post-config phase will fail with "vault-bootstrap auth failed".
 One-time fix: obtain a root or admin token and run manually:

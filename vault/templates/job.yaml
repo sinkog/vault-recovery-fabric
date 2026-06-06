@@ -146,37 +146,55 @@ spec:
             && echo "[8] Role vault-bootstrap OK" \
             || { echo "[8] ERROR: Role vault-bootstrap failed!"; exit 1; }
 
-          {{- if .Values.bootstrap.storeUnsealKeys }}
           if [ "$FRESH_INIT" = "true" ]; then
-            echo "[9] Storing unseal keys in KV..."
+            # ── Primary store: Vault KV (always) ─────────────────────────────
+            echo "[9] Storing unseal keys in Vault KV (primary)..."
             {{- if .Values.recovery.encryption.enabled }}
-            ENCRYPTED=$(cat /tmp/vault-unseal.txt \
+            STORE_CONTENTS=$(cat /tmp/vault-unseal.txt \
               | openssl enc -aes-256-cbc -pbkdf2 -pass file:/tmp/recovery-passphrase/passphrase \
               | openssl base64 -A)
-            vault kv put {{ include "vrf.localSecretPath" . }} contents="$ENCRYPTED" \
+            vault kv put {{ include "vrf.localSecretPath" . }} contents="$STORE_CONTENTS" \
               && echo "[9] Keys stored (encrypted) at {{ include "vrf.localSecretPath" . }}" \
-              || { echo "[9] ERROR: KV store failed!"; exit 1; }
+              || { echo "[9] ERROR: Vault KV store failed!"; exit 1; }
             {{- else }}
             vault kv put {{ include "vrf.localSecretPath" . }} contents=@/tmp/vault-unseal.txt \
               && echo "[9] Keys stored at {{ include "vrf.localSecretPath" . }}" \
-              || { echo "[9] ERROR: KV store failed!"; exit 1; }
+              || { echo "[9] ERROR: Vault KV store failed!"; exit 1; }
+            {{- end }}
+
+            {{- if .Values.bootstrap.store.k8sSecret.enabled }}
+            # ── Secondary store: K8s Secret ──────────────────────────────────
+            echo "[9b] Writing init material to K8s Secret {{ .Values.bootstrap.store.k8sSecret.name }}..."
+            KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            KUBE_API=https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS:-443}
+            KEYS_B64=$(cat /tmp/vault-unseal.txt | base64 | tr -d '\n')
+            ROOT_B64=$(cat /tmp/vault-token.txt | base64 | tr -d '\n')
+            printf '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"%s"},"type":"Opaque","data":{"unseal-keys":"%s","root-token":"%s"}}' \
+              "{{ .Values.bootstrap.store.k8sSecret.name }}" \
+              "{{ .Release.Namespace }}" \
+              "$KEYS_B64" "$ROOT_B64" \
+            | wget -q --no-check-certificate \
+                --header="Authorization: Bearer $KUBE_TOKEN" \
+                --header="Content-Type: application/json" \
+                --post-file=- \
+                -O /dev/null \
+                "$KUBE_API/api/v1/namespaces/{{ .Release.Namespace }}/secrets" \
+              && echo "[9b] K8s Secret {{ .Values.bootstrap.store.k8sSecret.name }} created." \
+              || echo "[9b] WARNING: K8s Secret write failed (may already exist from prior init)."
+            unset KUBE_TOKEN KEYS_B64 ROOT_B64
+            {{- end }}
+
+            echo "=== VAULT BOOTSTRAP COMPLETE ==="
+            echo "Primary:  vault kv get {{ include "vrf.localSecretPath" . }}"
+            {{- if .Values.bootstrap.store.k8sSecret.enabled }}
+            echo "Secondary: kubectl get secret {{ .Values.bootstrap.store.k8sSecret.name }} -n {{ .Release.Namespace }} -o jsonpath='{.data.unseal-keys}' | base64 -d"
+            {{- end }}
+            {{- if gt (int .Values.bootstrap.holdInitMaterialSeconds) 0 }}
+            echo "Init material in /tmp for {{ .Values.bootstrap.holdInitMaterialSeconds }}s — use kubectl cp to retrieve."
+            sleep {{ .Values.bootstrap.holdInitMaterialSeconds }}
             {{- end }}
           else
-            echo "[9] Upgrade run — skipping KV key store (keys already present)."
-          fi
-          {{- else }}
-          echo "[9] storeUnsealKeys=false, skipping KV store."
-          {{- end }}
-
-          echo "=== VAULT BOOTSTRAP COMPLETE ==="
-          if [ "$FRESH_INIT" = "true" ]; then
-            echo "Root token és unseal keys a job pod /tmp/ könyvtárában érhetők el amíg a job fut:"
-            echo "  kubectl exec -n {{ .Release.Namespace }} <job-pod> -- cat /tmp/vault-token.txt"
-            echo "  kubectl exec -n {{ .Release.Namespace }} <job-pod> -- cat /tmp/vault-unseal.txt"
-            {{- if .Values.bootstrap.storeUnsealKeys }}
-            echo "Unseal keys KV-ban: vault kv get {{ include "vrf.localSecretPath" . }}"
-            {{- end }}
-            echo "A job pod törlésével (vagy a sleep lejártával) a fájlok véglegesen törlődnek."
+            echo "=== VAULT POST-CONFIG COMPLETE (upgrade) ==="
           fi
           echo "==========================="
           rm -f /tmp/init.json /tmp/vault-unseal.txt /tmp/vault-token.txt

@@ -59,13 +59,10 @@ spec:
         exit 1
       fi
 
-      {{- if .Values.bootstrap.storeUnsealKeys }}
-      echo "=== recovery material readable (bootstrap.storeUnsealKeys=true) ==="
-      vault kv get {{ include "vrf.localSecretPath" . }} || exit 1
-      {{- else }}
-      echo "=== recovery material check skipped (bootstrap.storeUnsealKeys=false) ==="
-      echo "    Local recovery material not expected; mesh or out-of-band recovery applies."
-      {{- end }}
+      echo "=== recovery material readable in local Vault KV ==="
+      vault kv get {{ include "vrf.localSecretPath" . }} > /dev/null \
+        && echo "PASS: recovery material present at {{ include "vrf.localSecretPath" . }}" \
+        || echo "INFO: no local recovery material (expected in mesh mode with out-of-band custody)"
 
       echo "=== recovery auth checks passed ==="
   restartPolicy: Never

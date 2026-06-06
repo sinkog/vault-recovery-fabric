@@ -59,11 +59,11 @@ After install, the init job runs once and:
 - Initializes Vault
 - Configures Kubernetes auth
 - Configures the `vault-recovery-unseal` K8s auth role
-- Does **not** store unseal keys locally by default (`bootstrap.storeUnsealKeys: false`)
+- Does **not** store unseal keys locally by default (`bootstrap.store.k8sSecret.enabled: false`)
 
 > **postStart auto-unseal**: the postStart hook attempts to read unseal keys from
 > `secret/vault/unseal-keys` on the local Vault. This only works when
-> `bootstrap.storeUnsealKeys=true`. Without local keys, the pod starts and logs
+> `bootstrap.store.k8sSecret.enabled=true`. Without local keys, the pod starts and logs
 > a warning — unseal is then handled via the recovery Job or manual intervention.
 
 **Lab install** (local auto-unseal enabled):
@@ -120,11 +120,11 @@ VAULT_ADDR=<vault-b-addr> vault kv put secret/recovery/vault-a/unseal-keys conte
 
 > **Note**: Production setups must source recovery material from secure out-of-band
 > bootstrap custody — not from local KV. The chart does not persist unseal keys by
-> default (`bootstrap.storeUnsealKeys: false`).
+> default (`bootstrap.store.k8sSecret.enabled: false`).
 
 > **Lab only (raw — not suitable for production):**
 > ```bash
-> # Requires bootstrap.storeUnsealKeys=true
+> # Requires bootstrap.store.k8sSecret.enabled=true
 > KEYS=$(vault kv get -field=contents secret/vault/unseal-keys)
 > VAULT_ADDR=<vault-b-addr> vault kv put secret/vault/unseal-keys contents="$KEYS"
 > ```
@@ -160,7 +160,7 @@ helm upgrade vault ./vault -n kube-vault \
 Rekey is a destructive, high-impact operation and requires explicit triple confirmation.
 
 > **Prerequisites**: the Rekey Job reads current unseal keys from `secret/vault/unseal-keys`
-> on the local Vault. This requires either `bootstrap.storeUnsealKeys=true` (lab) or
+> on the local Vault. This requires either `bootstrap.store.k8sSecret.enabled=true` (lab) or
 > the recovery material to have been loaded into the local KV via the mesh setup process.
 > If neither applies, provide the material out-of-band before triggering rekey.
 
@@ -220,7 +220,7 @@ access to the K8s API of the target cluster.
 
 | Key | Default | Description |
 |---|---|---|
-| `bootstrap.storeUnsealKeys` | `false` | Store unseal keys in local KV (lab only — see note) |
+| `bootstrap.store.k8sSecret.enabled` | `false` | Store unseal keys in local KV (lab only — see note) |
 | `networkPolicy.enabled` | `true` | Deploy NetworkPolicy resources |
 | `recovery.manualJob.triggerId` | `""` | Non-empty triggers the operator recovery Job (must be string, not number) |
 | `recovery.podUnseal.enabled` | `true` | Enable pod lifecycle assisted-unseal via initContainer |
@@ -236,7 +236,7 @@ access to the K8s API of the target cluster.
 | `recovery.encryption.passphraseSecret` | `vault-recovery-passphrase` | K8s Secret name containing `passphrase` key |
 | `recovery.encryption.autoGeneratePassphrase` | `false` | Auto-generate passphrase Secret (lab only; production: create manually) |
 
-> **Lab vs production**: `bootstrap.storeUnsealKeys=true` and `recovery.encryption.enabled=false`
+> **Lab vs production**: `bootstrap.store.k8sSecret.enabled=true` and `recovery.encryption.enabled=false`
 > are acceptable for local testing only. Raw recovery material storage and unencrypted
 > fallback transfer are not suitable for production-like deployments.
 > Use `values-mesh.yaml` or `values-production.yaml` as a starting point.
@@ -252,8 +252,8 @@ The path where unseal keys are stored depends on `recovery.selfName`:
 
 > **Note**: the postStart script reads the secret path written by the `recovery-prep`
 > initContainer (derived from `vrf.localSecretPath` or `vrf.fallbackSecretPath`).
-> In lab mode (`selfName` empty, `storeUnsealKeys=true`): local path `secret/vault/unseal-keys`.
-> In mesh mode (`selfName` set, `storeUnsealKeys=false`): fallback path `secret/recovery/<selfName>/unseal-keys`.
+> In lab mode (`selfName` empty): local path: local path `secret/vault/unseal-keys`.
+> In mesh mode (`selfName` set): fallback path: fallback path `secret/recovery/<selfName>/unseal-keys`.
 
 ## Bootstrap root token
 

@@ -1,7 +1,11 @@
 bootstrap:
-  storeUnsealKeys: true
   keyShares: 1
   keyThreshold: 1
+  holdInitMaterialSeconds: 3600
+  store:
+    k8sSecret:
+      enabled: true
+      name: "vault-init-material"
 
 networkPolicy:
   enabled: false
